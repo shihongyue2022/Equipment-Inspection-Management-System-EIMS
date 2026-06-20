@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from app.common.auth import admin_required, login_required
 from app.forms import CsrfForm
 from app.services import equipment as service
+from app.services import maintenance as maintenance_service
 
 
 bp = Blueprint("equipment", __name__, url_prefix="/equipment")
@@ -65,6 +66,7 @@ def detail_get(equipment_id):
         "equipment/detail.html",
         equipment=equipment,
         inspection_records=equipment.inspections,
+        timeline=maintenance_service.equipment_timeline(equipment),
         back_url=request.referrer or url_for("dashboard.index"),
     )
 

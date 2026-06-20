@@ -103,6 +103,35 @@ CREATE TABLE seed_sequence (
     PRIMARY KEY (n)
 );
 
+-- ============================================================
+-- maintenance_recordsテーブル（修理対応のライフサイクル）
+-- ============================================================
+CREATE TABLE maintenance_records (
+    id                   INT          NOT NULL AUTO_INCREMENT COMMENT '修理対応ID',
+    equipment_id         INT          NOT NULL                COMMENT '設備ID',
+    source_inspection_id INT          DEFAULT NULL            COMMENT '起点となった点検記録ID',
+    engineer_id          INT          NOT NULL                COMMENT '対応担当者ID',
+    status               VARCHAR(20)  NOT NULL                COMMENT 'planned / in_progress / completed / cancelled',
+    action               VARCHAR(255) NOT NULL                COMMENT '作業内容',
+    started_at           DATE         DEFAULT NULL            COMMENT '着手日',
+    completed_at         DATE         DEFAULT NULL            COMMENT '完了日',
+    result               TEXT         DEFAULT NULL            COMMENT '対応結果',
+    note                 TEXT         DEFAULT NULL            COMMENT '備考',
+    created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '登録日時',
+    PRIMARY KEY (id),
+    UNIQUE INDEX uq_maintenance_source_inspection (source_inspection_id),
+    INDEX idx_maintenance_equipment (equipment_id),
+    INDEX idx_maintenance_engineer (engineer_id),
+    INDEX idx_maintenance_status (status),
+    INDEX idx_maintenance_completed_at (completed_at),
+    CONSTRAINT fk_maintenance_equipment
+        FOREIGN KEY (equipment_id) REFERENCES equipment (id) ON DELETE CASCADE,
+    CONSTRAINT fk_maintenance_inspection
+        FOREIGN KEY (source_inspection_id) REFERENCES inspection_records (id) ON DELETE SET NULL,
+    CONSTRAINT fk_maintenance_engineer
+        FOREIGN KEY (engineer_id) REFERENCES employee (id) ON DELETE RESTRICT
+);
+
 INSERT INTO seed_sequence (n)
 SELECT
     ones.d + tens.d * 10 + hundreds.d * 100 + thousands.d * 1000 + 1
@@ -310,7 +339,7 @@ INSERT INTO inspection_records (equipment_id, engineer_id, inspected_at, status,
     (12, 5, '2026-04-01', 'normal', '熱源ポンプと制御盤を点検。次回点検は7月初旬を予定。');
 
 -- 点検記録を合計3,625件まで拡張する（既存13件 + 追加3,612件）。
--- 全追加設備に3件以上の履歴を持たせ、normal/watch/repairを約78%/16%/6%で分布させる。
+-- 全追加設備に3件以上の履歴を持たせ、設備単位で意味のある状態遷移を作る。
 INSERT INTO inspection_records (equipment_id, engineer_id, inspected_at, status, note)
 SELECT
     eq.id,
@@ -320,22 +349,78 @@ SELECT
         INTERVAL (FLOOR((s.n - 1) / 1185) * 365 + MOD(eq.id * 13, 120)) DAY
     ),
     CASE
-        WHEN MOD(s.n, 100) < 78 THEN 'normal'
-        WHEN MOD(s.n, 100) < 94 THEN 'watch'
-        ELSE 'repair'
+        WHEN MOD(eq.id, 50) = 0
+             AND FLOOR((s.n - 1) / 1185) IN (0, 2) THEN 'repair'
+        WHEN MOD(eq.id, 50) BETWEEN 1 AND 3
+             AND FLOOR((s.n - 1) / 1185) = 1 THEN 'repair'
+        WHEN MOD(eq.id, 50) BETWEEN 4 AND 6
+             AND FLOOR((s.n - 1) / 1185) = 2 THEN 'watch'
+        WHEN MOD(eq.id, 50) BETWEEN 4 AND 6
+             AND FLOOR((s.n - 1) / 1185) = 1 THEN 'repair'
+        WHEN MOD(eq.id, 50) BETWEEN 7 AND 14
+             AND FLOOR((s.n - 1) / 1185) = 0 THEN 'watch'
+        WHEN MOD(eq.id, 50) BETWEEN 15 AND 16
+             AND FLOOR((s.n - 1) / 1185) = 0 THEN 'repair'
+        WHEN MOD(eq.id, 50) BETWEEN 17 AND 19
+             AND FLOOR((s.n - 1) / 1185) = 1 THEN 'watch'
+        ELSE 'normal'
     END,
     CASE
-        WHEN MOD(s.n, 100) < 26 THEN 'フィルター清掃、運転電流および温度差を確認。すべて基準範囲内。'
-        WHEN MOD(s.n, 100) < 52 THEN '配管、ドレン、ベルト張力を点検。漏れ、異音および異常振動なし。'
-        WHEN MOD(s.n, 100) < 78 THEN '制御盤と安全装置の動作試験を実施し、正常動作を確認。'
-        WHEN MOD(s.n, 100) < 86 THEN '振動値に軽微な上昇傾向あり。次回点検時に再測定する。'
-        WHEN MOD(s.n, 100) < 94 THEN '消耗部品に摩耗を確認。予防交換を次回作業として計画。'
-        WHEN MOD(s.n, 100) < 97 THEN '送風系統に異音を確認。軸受け部品を手配し低負荷で継続運転。'
-        ELSE '制御センサーの応答不良を確認。交換作業完了まで設備を停止。'
+        WHEN (
+            (MOD(eq.id, 50) = 0 AND FLOOR((s.n - 1) / 1185) IN (0, 2))
+            OR (MOD(eq.id, 50) BETWEEN 1 AND 3 AND FLOOR((s.n - 1) / 1185) = 1)
+            OR (MOD(eq.id, 50) BETWEEN 4 AND 6 AND FLOOR((s.n - 1) / 1185) = 1)
+            OR (MOD(eq.id, 50) BETWEEN 15 AND 16 AND FLOOR((s.n - 1) / 1185) = 0)
+        ) THEN '異音と振動値超過を確認。修理対応を起票し、対象部品の交換を依頼。'
+        WHEN (
+            (MOD(eq.id, 50) BETWEEN 4 AND 6 AND FLOOR((s.n - 1) / 1185) = 2)
+            OR (MOD(eq.id, 50) BETWEEN 7 AND 14 AND FLOOR((s.n - 1) / 1185) = 0)
+            OR (MOD(eq.id, 50) BETWEEN 17 AND 19 AND FLOOR((s.n - 1) / 1185) = 1)
+        ) THEN '振動値に上昇傾向あり。次回点検で再測定し、悪化時は修理へ移行する。'
+        WHEN MOD(eq.id, 3) = 0 THEN 'フィルター清掃、運転電流および温度差を確認。すべて基準範囲内。'
+        WHEN MOD(eq.id, 3) = 1 THEN '配管、ドレン、ベルト張力を点検。漏れ、異音および異常振動なし。'
+        ELSE '制御盤と安全装置の動作試験を実施し、正常動作を確認。'
     END
 FROM seed_sequence s
 JOIN equipment eq ON eq.id = 16 + MOD(s.n - 1, 1185)
 WHERE s.n <= 3612;
+
+-- 要修理点検ごとに修理対応を作成する。
+-- 後続点検がある過去障害は「完了」、最新障害は「対応予定」として時系列を成立させる。
+INSERT INTO maintenance_records (
+    equipment_id, source_inspection_id, engineer_id, status, action,
+    started_at, completed_at, result, note
+)
+SELECT
+    ir.equipment_id,
+    ir.id,
+    ir.engineer_id,
+    CASE WHEN EXISTS (
+        SELECT 1 FROM inspection_records later
+        WHERE later.equipment_id = ir.equipment_id
+          AND (later.inspected_at > ir.inspected_at
+               OR (later.inspected_at = ir.inspected_at AND later.id > ir.id))
+    ) THEN 'completed' ELSE 'planned' END,
+    CASE MOD(ir.equipment_id, 3)
+        WHEN 0 THEN '軸受けおよび駆動ベルト交換'
+        WHEN 1 THEN '制御センサー交換と校正'
+        ELSE '送風モーター交換と試運転'
+    END,
+    CASE WHEN EXISTS (
+        SELECT 1 FROM inspection_records later
+        WHERE later.equipment_id = ir.equipment_id AND later.inspected_at > ir.inspected_at
+    ) THEN DATE_ADD(ir.inspected_at, INTERVAL 2 DAY) ELSE NULL END,
+    CASE WHEN EXISTS (
+        SELECT 1 FROM inspection_records later
+        WHERE later.equipment_id = ir.equipment_id AND later.inspected_at > ir.inspected_at
+    ) THEN DATE_ADD(ir.inspected_at, INTERVAL 7 DAY) ELSE NULL END,
+    CASE WHEN EXISTS (
+        SELECT 1 FROM inspection_records later
+        WHERE later.equipment_id = ir.equipment_id AND later.inspected_at > ir.inspected_at
+    ) THEN '部品交換後の試運転と再測定を実施し、基準値内への復帰を確認。' ELSE NULL END,
+    '点検記録から自動生成された架空の修理対応。'
+FROM inspection_records ir
+WHERE ir.status = 'repair';
 
 -- 追加設備の次回点検日は、最新点検日と設備ごとの点検周期から再計算する。
 UPDATE equipment eq
@@ -351,7 +436,7 @@ SET eq.next_inspection_date = DATE_ADD(
 )
 WHERE eq.id >= 16;
 
--- デモデータ総数：25拠点 + 150ユーザー + 1,200設備 + 3,625点検 = 5,000件。
+-- 基本デモデータ5,000件に加え、要修理点検へ対応する修理ライフサイクルを投入する。
 DROP TABLE seed_sequence;
 
 -- 初期SQLで作成したスキーマをAlembicの初期版として記録する。
@@ -359,4 +444,4 @@ CREATE TABLE alembic_version (
     version_num VARCHAR(32) NOT NULL,
     PRIMARY KEY (version_num)
 );
-INSERT INTO alembic_version (version_num) VALUES ('d9a71c3e5b42');
+INSERT INTO alembic_version (version_num) VALUES ('f2c84d6a190e');

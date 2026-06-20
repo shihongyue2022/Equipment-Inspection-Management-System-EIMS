@@ -3,7 +3,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 
 from app.extensions import db
-from app.models import Equipment, Inspection
+from app.models import Equipment, Inspection, Maintenance
 
 
 VALID_STATUSES = {"normal", "watch", "repair"}
@@ -34,6 +34,17 @@ def register_inspection(values, engineer_id):
     record = Inspection(engineer_id=engineer_id, **values)
     db.session.add(record)
     db.session.flush()
+    if values["status"] == "repair":
+        db.session.add(
+            Maintenance(
+                equipment_id=equipment.id,
+                source_inspection_id=record.id,
+                engineer_id=engineer_id,
+                status="planned",
+                action="点検で検出した不具合の修理対応",
+                note=values.get("note"),
+            )
+        )
     latest_date = max(
         [values["inspected_at"], *(item.inspected_at for item in equipment.inspections)]
     )

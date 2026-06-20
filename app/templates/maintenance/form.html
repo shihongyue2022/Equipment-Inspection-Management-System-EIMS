@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}修理対応登録 - {{ equipment.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-wrench-adjustable me-2 text-primary"></i>修理対応{{ '更新' if maintenance else '登録' }}
+  </h2>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white py-3">
+    <div class="fw-semibold">{{ equipment.name }}</div>
+    <div class="text-muted small">{{ equipment.location }}</div>
+  </div>
+  <div class="card-body p-4">
+    {% if error_message %}
+    <div class="alert alert-danger" role="alert">{{ error_message }}</div>
+    {% endif %}
+    {% if source_inspection %}
+    <div class="alert alert-warning py-2" role="alert">
+      {{ source_inspection.inspected_at }} の要修理点検から作成された対応です。
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('maintenance.edit_post', maintenance_id=maintenance.id) if maintenance else url_for('maintenance.new_post') }}">
+      {{ form.hidden_tag() if form else '' }}
+      <input type="hidden" name="equipment_id" value="{{ equipment.id }}">
+      <input type="hidden" name="source_inspection_id"
+             value="{{ source_inspection.id if source_inspection else (maintenance.source_inspection_id if maintenance else '') }}">
+      {% set data = form_data if form_data else maintenance %}
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label for="status" class="form-label">対応状況 <span class="text-danger">*</span></label>
+          <select id="status" name="status" class="form-select" required>
+            {% for value, label in [('planned', '対応予定'), ('in_progress', '対応中'), ('completed', '完了'), ('cancelled', '取消')] %}
+            <option value="{{ value }}" {% if (data and data.status == value) or (not data and value == 'planned') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="action" class="form-label">作業内容 <span class="text-danger">*</span></label>
+          <input id="action" name="action" class="form-control" maxlength="255" required
+                 value="{{ data.action if data and data.action else '点検で検出した不具合の修理対応' }}">
+        </div>
+        <div class="col-md-6">
+          <label for="started_at" class="form-label">着手日</label>
+          <input type="date" id="started_at" name="started_at" class="form-control"
+                 value="{{ data.started_at if data and data.started_at else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label for="completed_at" class="form-label">完了日</label>
+          <input type="date" id="completed_at" name="completed_at" class="form-control"
+                 value="{{ data.completed_at if data and data.completed_at else '' }}">
+        </div>
+        <div class="col-12">
+          <label for="result" class="form-label">対応結果</label>
+          <textarea id="result" name="result" class="form-control" rows="3">{{ data.result if data and data.result else '' }}</textarea>
+        </div>
+        <div class="col-12">
+          <label for="note" class="form-label">備考</label>
+          <textarea id="note" name="note" class="form-control" rows="2">{{ data.note if data and data.note else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">保存</button>
+        <a href="{{ url_for('equipment.detail_get', equipment_id=equipment.id) }}" class="btn btn-outline-secondary">キャンセル</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

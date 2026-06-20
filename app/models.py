@@ -1,6 +1,16 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.extensions import db
@@ -38,6 +48,9 @@ class User(db.Model):
 
     assigned_equipment: Mapped[list["Equipment"]] = relationship(back_populates="assigned_user")
     inspections: Mapped[list["Inspection"]] = relationship(back_populates="engineer")
+    maintenance_records: Mapped[list["Maintenance"]] = relationship(
+        back_populates="engineer"
+    )
 
     @property
     def full_name(self):
@@ -72,6 +85,11 @@ class Equipment(db.Model):
         back_populates="equipment",
         cascade="all, delete-orphan",
         order_by=lambda: (Inspection.inspected_at.desc(), Inspection.id.desc()),
+    )
+    maintenance_records: Mapped[list["Maintenance"]] = relationship(
+        back_populates="equipment",
+        cascade="all, delete-orphan",
+        order_by=lambda: Maintenance.id.desc(),
     )
 
     @property
@@ -112,6 +130,9 @@ class Inspection(db.Model):
 
     equipment: Mapped[Equipment] = relationship(back_populates="inspections")
     engineer: Mapped[User] = relationship(back_populates="inspections")
+    maintenance_records: Mapped[list["Maintenance"]] = relationship(
+        back_populates="source_inspection"
+    )
 
     @property
     def engineer_name(self):
@@ -122,3 +143,53 @@ class Inspection(db.Model):
         return {"normal": "正常", "watch": "要観察", "repair": "要修理"}.get(
             self.status, "不明"
         )
+
+
+class Maintenance(db.Model):
+    __tablename__ = "maintenance_records"
+    __table_args__ = (
+        UniqueConstraint("source_inspection_id", name="uq_maintenance_source_inspection"),
+        Index("idx_maintenance_equipment", "equipment_id"),
+        Index("idx_maintenance_engineer", "engineer_id"),
+        Index("idx_maintenance_status", "status"),
+        Index("idx_maintenance_completed_at", "completed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    equipment_id: Mapped[int] = mapped_column(
+        ForeignKey("equipment.id", ondelete="CASCADE")
+    )
+    source_inspection_id: Mapped[int | None] = mapped_column(
+        ForeignKey("inspection_records.id", ondelete="SET NULL")
+    )
+    engineer_id: Mapped[int] = mapped_column(
+        ForeignKey("employee.id", ondelete="RESTRICT")
+    )
+    status: Mapped[str] = mapped_column(String(20))
+    action: Mapped[str] = mapped_column(String(255))
+    started_at: Mapped[date | None] = mapped_column(Date)
+    completed_at: Mapped[date | None] = mapped_column(Date)
+    result: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+
+    equipment: Mapped[Equipment] = relationship(back_populates="maintenance_records")
+    source_inspection: Mapped[Inspection | None] = relationship(
+        back_populates="maintenance_records"
+    )
+    engineer: Mapped[User] = relationship(back_populates="maintenance_records")
+
+    @property
+    def engineer_name(self):
+        return self.engineer.full_name
+
+    @property
+    def status_label(self):
+        return {
+            "planned": "対応予定",
+            "in_progress": "対応中",
+            "completed": "完了",
+            "cancelled": "取消",
+        }.get(self.status, "不明")
