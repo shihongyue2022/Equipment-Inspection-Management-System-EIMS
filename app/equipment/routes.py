@@ -17,10 +17,98 @@ def _render_form(template, **context):
 @bp.get("")
 @admin_required
 def list_get():
+    keyword = request.args.get("q", "").strip() or None
+    selected_base = request.args.get("base") or None
+    selected_type = request.args.get("equipment_type") or None
+    selected_manufacturer = request.args.get("manufacturer") or None
+    selected_engineer = request.args.get("engineer_id", type=int)
+    selected_deadline = request.args.get("deadline") or None
+    selected_sort = request.args.get("sort_by", "next_inspection")
+    if selected_sort not in service.MANAGEMENT_SORT_OPTIONS:
+        selected_sort = "next_inspection"
+    selected_order = request.args.get("sort_order", "asc")
+    if selected_order not in {"asc", "desc"}:
+        selected_order = "asc"
+
+    def filters():
+        return {
+            "keyword": keyword,
+            "base": selected_base,
+            "equipment_type": selected_type,
+            "manufacturer": selected_manufacturer,
+            "engineer_id": selected_engineer,
+            "deadline": selected_deadline,
+        }
+
+    filter_options = service.equipment_management_filter_options(**filters())
+    valid = {
+        "base": {item["value"] for item in filter_options["bases"]},
+        "equipment_type": {
+            item["value"] for item in filter_options["equipment_types"]
+        },
+        "manufacturer": {
+            item["value"] for item in filter_options["manufacturers"]
+        },
+        "engineer_id": {item["id"] for item in filter_options["engineers"]},
+        "deadline": {item["value"] for item in filter_options["deadlines"]},
+    }
+    normalized = False
+    for value, allowed, clear in (
+        (selected_base, valid["base"], lambda: None),
+        (selected_type, valid["equipment_type"], lambda: None),
+        (selected_manufacturer, valid["manufacturer"], lambda: None),
+        (selected_engineer, valid["engineer_id"], lambda: None),
+        (selected_deadline, valid["deadline"], lambda: None),
+    ):
+        if value is not None and value not in allowed:
+            normalized = True
+            if value == selected_base:
+                selected_base = clear()
+            elif value == selected_type:
+                selected_type = clear()
+            elif value == selected_manufacturer:
+                selected_manufacturer = clear()
+            elif value == selected_engineer:
+                selected_engineer = clear()
+            else:
+                selected_deadline = clear()
+    if normalized:
+        filter_options = service.equipment_management_filter_options(**filters())
+
+    page = max(request.args.get("page", 1, type=int), 1)
+    pagination = service.search_equipment(
+        page=page,
+        per_page=50,
+        sort_by=selected_sort,
+        sort_order=selected_order,
+        **filters(),
+    )
     return render_template(
         "equipment/list.html",
-        equipment_list=service.list_equipment(),
+        equipment_list=pagination.items,
+        pagination=pagination,
         engineer_list=service.engineers(),
+        filter_options=filter_options,
+        keyword=keyword,
+        selected_base=selected_base,
+        selected_type=selected_type,
+        selected_manufacturer=selected_manufacturer,
+        selected_engineer=selected_engineer,
+        selected_deadline=selected_deadline,
+        sort_options=service.MANAGEMENT_SORT_OPTIONS,
+        selected_sort=selected_sort,
+        selected_order=selected_order,
+        active_filter_count=sum(
+            value is not None
+            for value in (
+                keyword,
+                selected_base,
+                selected_type,
+                selected_manufacturer,
+                selected_engineer,
+                selected_deadline,
+            )
+        ),
         form=CsrfForm(),
     )
 

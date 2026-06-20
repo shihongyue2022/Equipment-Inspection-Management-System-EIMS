@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.extensions import db
@@ -16,6 +16,19 @@ REQUIRED_FIELDS = (
     "installed_at",
     "inspection_interval_months",
 )
+
+MANAGEMENT_SORT_OPTIONS = {
+    "next_inspection": "次回点検日",
+    "name": "設備名",
+    "created": "登録日",
+}
+
+DEADLINE_LABELS = {
+    "overdue": "点検超過",
+    "soon": "まもなく期限",
+    "normal": "期限正常",
+    "uninspected": "未点検",
+}
 
 
 def list_equipment(*, user_id=None, base=None):
@@ -157,6 +170,133 @@ def dashboard_filter_options(
         ),
         "engineers": engineers,
     }
+
+
+def _deadline_expression():
+    today = date.today()
+    return case(
+        (Equipment.next_inspection_date.is_(None), "uninspected"),
+        (Equipment.next_inspection_date < today, "overdue"),
+        (Equipment.next_inspection_date <= today + timedelta(days=7), "soon"),
+        else_="normal",
+    )
+
+
+def _apply_management_filters(
+    statement,
+    *,
+    keyword=None,
+    base=None,
+    equipment_type=None,
+    manufacturer=None,
+    engineer_id=None,
+    deadline=None,
+    exclude=None,
+):
+    statement = statement.select_from(Equipment).outerjoin(
+        User, User.id == Equipment.assigned_user_id
+    )
+    if keyword:
+        pattern = f"%{keyword}%"
+        statement = statement.where(
+            or_(
+                Equipment.name.ilike(pattern),
+                Equipment.location.ilike(pattern),
+                Equipment.model_number.ilike(pattern),
+            )
+        )
+    if base and exclude != "base":
+        statement = statement.where(User.base == base)
+    if equipment_type and exclude != "equipment_type":
+        statement = statement.where(Equipment.equipment_type == equipment_type)
+    if manufacturer and exclude != "manufacturer":
+        statement = statement.where(Equipment.manufacturer == manufacturer)
+    if engineer_id is not None and exclude != "engineer_id":
+        statement = statement.where(Equipment.assigned_user_id == engineer_id)
+    if deadline and exclude != "deadline":
+        statement = statement.where(_deadline_expression() == deadline)
+    return statement
+
+
+def equipment_management_filter_options(**filters):
+    def counted(column, *, exclude):
+        statement = _apply_management_filters(
+            select(column.label("value"), func.count(Equipment.id).label("count")),
+            exclude=exclude,
+            **filters,
+        )
+        statement = (
+            statement.where(column.is_not(None))
+            .group_by(column)
+            .order_by(column)
+        )
+        return [
+            {"value": row.value, "count": int(row.count)}
+            for row in db.session.execute(statement)
+        ]
+
+    engineer_statement = _apply_management_filters(
+        select(
+            User.id,
+            User.last_name,
+            User.first_name,
+            func.count(Equipment.id).label("count"),
+        ),
+        exclude="engineer_id",
+        **filters,
+    )
+    engineer_statement = (
+        engineer_statement.where(User.role == "engineer")
+        .group_by(User.id, User.last_name, User.first_name)
+        .order_by(User.last_name, User.first_name, User.id)
+    )
+    engineers = [
+        {
+            "id": row.id,
+            "name": f"{row.last_name}{row.first_name}",
+            "count": int(row.count),
+        }
+        for row in db.session.execute(engineer_statement)
+    ]
+    deadline = _deadline_expression()
+    deadline_options = counted(deadline, exclude="deadline")
+    for option in deadline_options:
+        option["label"] = DEADLINE_LABELS[option["value"]]
+    return {
+        "bases": counted(User.base, exclude="base"),
+        "equipment_types": counted(
+            Equipment.equipment_type, exclude="equipment_type"
+        ),
+        "manufacturers": counted(
+            Equipment.manufacturer, exclude="manufacturer"
+        ),
+        "engineers": engineers,
+        "deadlines": deadline_options,
+    }
+
+
+def search_equipment(
+    *, page=1, per_page=50, sort_by="next_inspection", sort_order="asc", **filters
+):
+    statement = _apply_management_filters(
+        select(Equipment).options(selectinload(Equipment.assigned_user)), **filters
+    )
+    sort_expression = {
+        "next_inspection": Equipment.next_inspection_date,
+        "name": Equipment.name,
+        "created": Equipment.created_at,
+    }.get(sort_by, Equipment.next_inspection_date)
+    order = sort_expression.desc() if sort_order == "desc" else sort_expression.asc()
+    statement = statement.order_by(
+        Equipment.next_inspection_date.is_(None), order, Equipment.id
+    )
+    return db.paginate(
+        statement,
+        page=max(page, 1),
+        per_page=per_page,
+        max_per_page=100,
+        error_out=False,
+    )
 
 
 def get_equipment(equipment_id):
