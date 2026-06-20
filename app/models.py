@@ -20,6 +20,7 @@ class User(db.Model):
         Index("idx_employee_no", "employee_no", unique=True),
         Index("idx_employee_email", "email", unique=True),
         Index("idx_employee_role", "role"),
+        Index("idx_employee_base", "base"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -92,6 +93,7 @@ class Inspection(db.Model):
         Index("idx_inspection_equipment", "equipment_id"),
         Index("idx_inspection_engineer", "engineer_id"),
         Index("idx_inspection_inspected_at", "inspected_at"),
+        Index("idx_inspection_latest", "equipment_id", "inspected_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

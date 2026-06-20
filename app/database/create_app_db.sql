@@ -36,7 +36,8 @@ CREATE TABLE employee (
     PRIMARY KEY (id),
     UNIQUE INDEX idx_employee_no    (employee_no),
     UNIQUE INDEX idx_employee_email (email),
-    INDEX        idx_employee_role  (role)
+    INDEX        idx_employee_role  (role),
+    INDEX        idx_employee_base  (base)
 );
 
 -- ============================================================
@@ -77,6 +78,7 @@ CREATE TABLE inspection_records (
     INDEX idx_inspection_equipment    (equipment_id),
     INDEX idx_inspection_engineer     (engineer_id),
     INDEX idx_inspection_inspected_at (inspected_at),
+    INDEX idx_inspection_latest       (equipment_id, inspected_at, id),
     CONSTRAINT fk_inspection_equipment
         FOREIGN KEY (equipment_id) REFERENCES equipment (id)
         ON DELETE CASCADE,
@@ -357,4 +359,4 @@ CREATE TABLE alembic_version (
     version_num VARCHAR(32) NOT NULL,
     PRIMARY KEY (version_num)
 );
-INSERT INTO alembic_version (version_num) VALUES ('b28638c85152');
+INSERT INTO alembic_version (version_num) VALUES ('d9a71c3e5b42');

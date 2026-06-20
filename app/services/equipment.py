@@ -35,6 +35,29 @@ def list_equipment(*, user_id=None, base=None):
     return db.session.scalars(statement).all()
 
 
+def paginate_equipment(*, page=1, per_page=50, user_id=None, base=None):
+    statement = select(Equipment).options(
+        selectinload(Equipment.assigned_user),
+        selectinload(Equipment.inspections),
+    )
+    if user_id is not None:
+        statement = statement.where(Equipment.assigned_user_id == user_id)
+    if base:
+        statement = statement.join(Equipment.assigned_user).where(User.base == base)
+    statement = statement.order_by(
+        Equipment.next_inspection_date.is_(None),
+        Equipment.next_inspection_date,
+        Equipment.id,
+    )
+    return db.paginate(
+        statement,
+        page=max(page, 1),
+        per_page=per_page,
+        max_per_page=100,
+        error_out=False,
+    )
+
+
 def get_equipment(equipment_id):
     statement = (
         select(Equipment)
