@@ -27,12 +27,14 @@ def create_app(test_config=None):
     from app.dashboard import bp as dashboard_bp
     from app.equipment import bp as equipment_bp
     from app.inspections import bp as inspections_bp
+    from app.maintenance import bp as maintenance_bp
     from app import models  # noqa: F401 - registers migration metadata
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(equipment_bp)
     app.register_blueprint(inspections_bp)
+    app.register_blueprint(maintenance_bp)
     app.register_blueprint(accounts_bp)
 
     @app.get("/")

@@ -15,6 +15,58 @@
 
 <!-- 設備一覧テーブル -->
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-white py-3">
+    <form method="get" action="{{ url_for('equipment.list_get') }}" class="management-filter-form">
+      <div class="management-filter-search">
+        <input type="search" name="q" class="form-control form-control-sm"
+               value="{{ keyword or '' }}" placeholder="設備名・場所・型番を検索">
+        <button type="submit" class="btn btn-sm btn-primary">検索</button>
+      </div>
+      <select name="base" class="form-select form-select-sm" aria-label="拠点" onchange="this.form.submit()">
+        <option value="">全拠点</option>
+        {% for option in filter_options.bases %}
+        <option value="{{ option.value }}" {% if selected_base == option.value %}selected{% endif %}>{{ option.value }}（{{ option.count }}）</option>
+        {% endfor %}
+      </select>
+      <select name="equipment_type" class="form-select form-select-sm" aria-label="設備種別" onchange="this.form.submit()">
+        <option value="">全設備種別</option>
+        {% for option in filter_options.equipment_types %}
+        <option value="{{ option.value }}" {% if selected_type == option.value %}selected{% endif %}>{{ option.value }}（{{ option.count }}）</option>
+        {% endfor %}
+      </select>
+      <select name="manufacturer" class="form-select form-select-sm" aria-label="メーカー" onchange="this.form.submit()">
+        <option value="">全メーカー</option>
+        {% for option in filter_options.manufacturers %}
+        <option value="{{ option.value }}" {% if selected_manufacturer == option.value %}selected{% endif %}>{{ option.value }}（{{ option.count }}）</option>
+        {% endfor %}
+      </select>
+      <select name="engineer_id" class="form-select form-select-sm" aria-label="担当者" onchange="this.form.submit()">
+        <option value="">全担当者</option>
+        {% for option in filter_options.engineers %}
+        <option value="{{ option.id }}" {% if selected_engineer == option.id %}selected{% endif %}>{{ option.name }}（{{ option.count }}）</option>
+        {% endfor %}
+      </select>
+      <select name="deadline" class="form-select form-select-sm" aria-label="期限状態" onchange="this.form.submit()">
+        <option value="">全期限状態</option>
+        {% for option in filter_options.deadlines %}
+        <option value="{{ option.value }}" {% if selected_deadline == option.value %}selected{% endif %}>{{ option.label }}（{{ option.count }}）</option>
+        {% endfor %}
+      </select>
+      <select name="sort_by" class="form-select form-select-sm" aria-label="並び替え" onchange="this.form.submit()">
+        {% for value, label in sort_options.items() %}
+        <option value="{{ value }}" {% if selected_sort == value %}selected{% endif %}>{{ label }}順</option>
+        {% endfor %}
+      </select>
+      <select name="sort_order" class="form-select form-select-sm" aria-label="昇降順" onchange="this.form.submit()">
+        <option value="asc" {% if selected_order == 'asc' %}selected{% endif %}>昇順</option>
+        <option value="desc" {% if selected_order == 'desc' %}selected{% endif %}>降順</option>
+      </select>
+      {% if active_filter_count %}
+      <a href="{{ url_for('equipment.list_get') }}" class="btn btn-sm btn-ghost-secondary">条件をクリア</a>
+      {% endif %}
+    </form>
+    <div class="text-muted small mt-2">{{ pagination.total }} 件一致・{{ pagination.page }} / {{ pagination.pages or 1 }} ページ</div>
+  </div>
   <div class="card-body p-0">
     {% if equipment_list %}
     <div class="table-responsive">
@@ -128,6 +180,21 @@
     </div>
     {% endif %}
   </div>
+  {% if pagination.pages > 1 %}
+  <div class="card-footer bg-white">
+    <nav aria-label="設備一覧ページ">
+      <ul class="pagination pagination-sm justify-content-end mb-0">
+        {% for page_number in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+          {% if page_number %}
+          <li class="page-item{% if page_number == pagination.page %} active{% endif %}">
+            <a class="page-link" href="{{ url_for('equipment.list_get', page=page_number, q=keyword, base=selected_base, equipment_type=selected_type, manufacturer=selected_manufacturer, engineer_id=selected_engineer, deadline=selected_deadline, sort_by=selected_sort, sort_order=selected_order) }}">{{ page_number }}</a>
+          </li>
+          {% else %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+        {% endfor %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
 </div>
 
 {% endblock %}

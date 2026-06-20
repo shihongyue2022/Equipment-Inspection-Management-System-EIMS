@@ -104,6 +104,10 @@
          class="btn btn-primary">
         <i class="bi bi-clipboard-plus me-1"></i>点検記録登録
       </a>
+      <a href="{{ url_for('maintenance.new_get', equipment_id=equipment.id) }}"
+         class="btn btn-outline-primary">
+        <i class="bi bi-wrench-adjustable me-1"></i>修理対応登録
+      </a>
       <!-- 戻るボタン（遷移元に応じて戻り先が変わる） -->
       <a href="{{ back_url if back_url else url_for('dashboard.index') }}"
          class="btn btn-outline-secondary">
@@ -113,53 +117,59 @@
   </div>
 </div>
 
-<!-- 点検記録一覧（新しい順） -->
+<!-- 設備ライフサイクル（新しい順） -->
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-white py-3">
+  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
     <h5 class="mb-0">
-      <i class="bi bi-clipboard-data me-1"></i>点検記録一覧
+      <i class="bi bi-clipboard-data me-1"></i>点検・修理タイムライン
     </h5>
+    <span class="text-muted small">新しい順</span>
   </div>
-  <div class="card-body p-0">
-    {% if inspection_records %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>点検実施日</th>
-            <th>点検ステータス</th>
-            <th>実施者</th>
-            <th>備考</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for record in inspection_records %}
-          <tr>
-            <td>{{ record.inspected_at }}</td>
-
-            <!-- 点検ステータスバッジ -->
-            <td>
-              {% if record.status == 'normal' %}
-              <span class="badge bg-success">異常なし</span>
-              {% elif record.status == 'watch' %}
-              <span class="badge bg-warning text-dark">要観察</span>
-              {% elif record.status == 'repair' %}
-              <span class="badge bg-danger">要修理</span>
+  <div class="card-body">
+    {% if timeline %}
+    <div class="equipment-timeline">
+      {% for event in timeline %}
+      <div class="equipment-timeline-event timeline-{{ event.kind }}">
+        <div class="equipment-timeline-marker" aria-hidden="true"></div>
+        <div class="equipment-timeline-content">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+              <div class="text-muted small">{{ event.date }}</div>
+              <div class="fw-semibold mt-1">{{ event.title }}</div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              {% if event.kind == 'inspection' %}
+                {% if event.status == 'normal' %}<span class="badge bg-success">異常なし</span>
+                {% elif event.status == 'watch' %}<span class="badge bg-warning text-dark">要観察</span>
+                {% else %}<span class="badge bg-danger">要修理</span>{% endif %}
+              {% elif event.kind == 'maintenance_completed' %}
+                <span class="badge bg-success">修理完了</span>
+              {% elif event.kind == 'maintenance_started' %}
+                <span class="badge bg-primary">対応中</span>
+              {% elif event.kind == 'maintenance_cancelled' %}
+                <span class="badge bg-secondary">取消</span>
+              {% else %}
+                <span class="badge bg-secondary">対応予定</span>
               {% endif %}
-            </td>
-
-            <td>{{ record.engineer_name }}</td>
-            <td>{{ record.note if record.note else '─' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              {% if event.kind != 'inspection' %}
+              <a href="{{ url_for('maintenance.edit_get', maintenance_id=event.record.id) }}"
+                 class="btn btn-sm btn-outline-secondary">更新</a>
+              {% elif event.status == 'repair' and not event.record.maintenance_records %}
+              <a href="{{ url_for('maintenance.new_get', equipment_id=equipment.id, inspection_id=event.record.id) }}"
+                 class="btn btn-sm btn-outline-danger">修理対応</a>
+              {% endif %}
+            </div>
+          </div>
+          <div class="small mt-2">{{ event.detail if event.detail else '詳細なし' }}</div>
+          <div class="text-muted small mt-1">担当：{{ event.actor }}</div>
+        </div>
+      </div>
+      {% endfor %}
     </div>
     {% else %}
-    <!-- 点検記録がない場合 -->
     <div class="text-center text-muted py-4">
       <i class="bi bi-clipboard display-4"></i>
-      <p class="mt-2">まだ点検記録がありません。</p>
+      <p class="mt-2">点検・修理記録がありません。</p>
     </div>
     {% endif %}
   </div>

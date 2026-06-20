@@ -45,7 +45,50 @@ def _role_error(target, requested_role):
 @bp.get("/accounts")
 @admin_required
 def list_get():
-    return render_template("account/list.html", user_list=service.users())
+    keyword = request.args.get("q", "").strip() or None
+    selected_role = request.args.get("role") or None
+    selected_base = request.args.get("base") or None
+    selected_sort = request.args.get("sort_by", "name")
+    if selected_sort not in service.MANAGEMENT_SORT_OPTIONS:
+        selected_sort = "name"
+    selected_order = request.args.get("sort_order", "asc")
+    if selected_order not in {"asc", "desc"}:
+        selected_order = "asc"
+
+    filter_options = service.account_management_filter_options(
+        keyword=keyword, role=selected_role, base=selected_base
+    )
+    if selected_role not in {item["value"] for item in filter_options["roles"]}:
+        selected_role = None
+    if selected_base not in {item["value"] for item in filter_options["bases"]}:
+        selected_base = None
+    filter_options = service.account_management_filter_options(
+        keyword=keyword, role=selected_role, base=selected_base
+    )
+    pagination = service.search_users(
+        page=max(request.args.get("page", 1, type=int), 1),
+        per_page=50,
+        sort_by=selected_sort,
+        sort_order=selected_order,
+        keyword=keyword,
+        role=selected_role,
+        base=selected_base,
+    )
+    return render_template(
+        "account/list.html",
+        user_list=pagination.items,
+        pagination=pagination,
+        filter_options=filter_options,
+        keyword=keyword,
+        selected_role=selected_role,
+        selected_base=selected_base,
+        sort_options=service.MANAGEMENT_SORT_OPTIONS,
+        selected_sort=selected_sort,
+        selected_order=selected_order,
+        active_filter_count=sum(
+            value is not None for value in (keyword, selected_role, selected_base)
+        ),
+    )
 
 
 @bp.get("/accounts/new")

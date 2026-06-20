@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from app.common.auth import admin_required, login_required
 from app.forms import CsrfForm
 from app.services import equipment as service
+from app.services import maintenance as maintenance_service
 
 
 bp = Blueprint("equipment", __name__, url_prefix="/equipment")
@@ -16,10 +17,97 @@ def _render_form(template, **context):
 @bp.get("")
 @admin_required
 def list_get():
+    keyword = request.args.get("q", "").strip() or None
+    selected_base = request.args.get("base") or None
+    selected_type = request.args.get("equipment_type") or None
+    selected_manufacturer = request.args.get("manufacturer") or None
+    selected_engineer = request.args.get("engineer_id", type=int)
+    selected_deadline = request.args.get("deadline") or None
+    selected_sort = request.args.get("sort_by", "next_inspection")
+    if selected_sort not in service.MANAGEMENT_SORT_OPTIONS:
+        selected_sort = "next_inspection"
+    selected_order = request.args.get("sort_order", "asc")
+    if selected_order not in {"asc", "desc"}:
+        selected_order = "asc"
+
+    def filters():
+        return {
+            "keyword": keyword,
+            "base": selected_base,
+            "equipment_type": selected_type,
+            "manufacturer": selected_manufacturer,
+            "engineer_id": selected_engineer,
+            "deadline": selected_deadline,
+        }
+
+    filter_options = service.equipment_management_filter_options(**filters())
+    valid = {
+        "base": {item["value"] for item in filter_options["bases"]},
+        "equipment_type": {
+            item["value"] for item in filter_options["equipment_types"]
+        },
+        "manufacturer": {
+            item["value"] for item in filter_options["manufacturers"]
+        },
+        "engineer_id": {item["id"] for item in filter_options["engineers"]},
+        "deadline": {item["value"] for item in filter_options["deadlines"]},
+    }
+    normalized = False
+    if selected_base is not None and selected_base not in valid["base"]:
+        selected_base = None
+        normalized = True
+    if selected_type is not None and selected_type not in valid["equipment_type"]:
+        selected_type = None
+        normalized = True
+    if (
+        selected_manufacturer is not None
+        and selected_manufacturer not in valid["manufacturer"]
+    ):
+        selected_manufacturer = None
+        normalized = True
+    if selected_engineer is not None and selected_engineer not in valid["engineer_id"]:
+        selected_engineer = None
+        normalized = True
+    if selected_deadline is not None and selected_deadline not in valid["deadline"]:
+        selected_deadline = None
+        normalized = True
+    if normalized:
+        filter_options = service.equipment_management_filter_options(**filters())
+
+    page = max(request.args.get("page", 1, type=int), 1)
+    pagination = service.search_equipment(
+        page=page,
+        per_page=50,
+        sort_by=selected_sort,
+        sort_order=selected_order,
+        **filters(),
+    )
     return render_template(
         "equipment/list.html",
-        equipment_list=service.list_equipment(),
+        equipment_list=pagination.items,
+        pagination=pagination,
         engineer_list=service.engineers(),
+        filter_options=filter_options,
+        keyword=keyword,
+        selected_base=selected_base,
+        selected_type=selected_type,
+        selected_manufacturer=selected_manufacturer,
+        selected_engineer=selected_engineer,
+        selected_deadline=selected_deadline,
+        sort_options=service.MANAGEMENT_SORT_OPTIONS,
+        selected_sort=selected_sort,
+        selected_order=selected_order,
+        active_filter_count=sum(
+            value is not None
+            for value in (
+                keyword,
+                selected_base,
+                selected_type,
+                selected_manufacturer,
+                selected_engineer,
+                selected_deadline,
+            )
+        ),
         form=CsrfForm(),
     )
 
@@ -65,6 +153,7 @@ def detail_get(equipment_id):
         "equipment/detail.html",
         equipment=equipment,
         inspection_records=equipment.inspections,
+        timeline=maintenance_service.equipment_timeline(equipment),
         back_url=request.referrer or url_for("dashboard.index"),
     )
 

@@ -1,0 +1,55 @@
+<details class="group-chart-item">
+  <summary class="group-chart-summary">
+    <span class="group-chart-name" title="{{ row.group_name }}">
+      <span>{{ row.group_name }}</span>
+      <small>{{ row.total_count }} 台</small>
+    </span>
+    <span class="group-status-summary"
+          role="img"
+          aria-label="正常 {{ (row.normal_count * 100 / row.total_count)|round(1) }}%、要観察 {{ (row.watch_count * 100 / row.total_count)|round(1) }}%、要修理 {{ (row.repair_status_count * 100 / row.total_count)|round(1) }}%、未点検 {{ (row.uninspected_count * 100 / row.total_count)|round(1) }}%">
+      <span class="group-status-legend">
+        <span class="status-normal">正常 <strong>{{ (row.normal_count * 100 / row.total_count)|round(1) }}%</strong></span>
+        <span class="status-watch">要観察 <strong>{{ (row.watch_count * 100 / row.total_count)|round(1) }}%</strong></span>
+        <span class="status-repair">要修理 <strong>{{ (row.repair_status_count * 100 / row.total_count)|round(1) }}%</strong></span>
+        <span class="status-uninspected">未点検 <strong>{{ (row.uninspected_count * 100 / row.total_count)|round(1) }}%</strong></span>
+      </span>
+      <span class="group-status-track" aria-hidden="true">
+        <span class="status-normal" style="width: {{ (row.normal_count * 100 / row.total_count)|round(2) }}%"></span>
+        <span class="status-watch" style="width: {{ (row.watch_count * 100 / row.total_count)|round(2) }}%"></span>
+        <span class="status-repair" style="width: {{ (row.repair_status_count * 100 / row.total_count)|round(2) }}%"></span>
+        <span class="status-uninspected" style="width: {{ (row.uninspected_count * 100 / row.total_count)|round(2) }}%"></span>
+      </span>
+    </span>
+    <span class="group-chart-chevron" aria-hidden="true"></span>
+  </summary>
+
+  <div class="group-chart-detail">
+    <div class="group-chart-detail-title">件数・期限詳細</div>
+    <div class="group-risk-charts">
+      <div class="group-risk group-risk-overdue"
+           role="img"
+           aria-label="点検超過 {{ row.overdue_count }}件">
+        <div class="group-risk-label"><span>点検超過</span><strong>{{ row.overdue_count }}</strong></div>
+        <div class="group-risk-track" aria-hidden="true">
+          <span style="width: {{ (row.overdue_count * 100 / row.total_count)|round(1) }}%"></span>
+        </div>
+      </div>
+      <div class="group-risk group-risk-soon"
+           role="img"
+           aria-label="まもなく期限 {{ row.soon_count }}件">
+        <div class="group-risk-label"><span>まもなく期限</span><strong>{{ row.soon_count }}</strong></div>
+        <div class="group-risk-track" aria-hidden="true">
+          <span style="width: {{ (row.soon_count * 100 / row.total_count)|round(1) }}%"></span>
+        </div>
+      </div>
+      <div class="group-risk group-risk-repair"
+           role="img"
+           aria-label="要修理 {{ row.repair_count }}件">
+        <div class="group-risk-label"><span>要修理</span><strong>{{ row.repair_count }}</strong></div>
+        <div class="group-risk-track" aria-hidden="true">
+          <span style="width: {{ (row.repair_count * 100 / row.total_count)|round(1) }}%"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</details>
