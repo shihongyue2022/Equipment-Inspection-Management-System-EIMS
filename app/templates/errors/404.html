@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}404 ページが見つかりません - 設備点検管理システム{% endblock %}
+
+{% block content %}
+<div class="text-center py-5">
+  <div class="display-1 text-muted fw-bold">404</div>
+  <h2 class="mt-3 mb-3">ページが見つかりません</h2>
+  <p class="text-muted mb-4">
+    お探しのページは存在しないか、移動または削除された可能性があります。
+  </p>
+  <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">
+    <i class="bi bi-house me-1"></i>ダッシュボードへ戻る
+  </a>
+</div>
+{% endblock %}
