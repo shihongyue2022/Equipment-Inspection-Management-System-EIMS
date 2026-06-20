@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ログイン - 設備点検管理システム</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler/css/tabler.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler-icons/tabler-icons.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="d-flex flex-column login-page">
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+      <div class="text-center mb-4">
+        <div class="login-brand-mark mx-auto mb-3"><i class="bi bi-tools"></i></div>
+        <h1 class="h2 mb-1">設備点検管理システム</h1>
+        <p class="text-secondary mb-0">青空設備サービス株式会社（架空）</p>
+      </div>
+
+      <div class="card card-md login-card">
+        <div class="card-body">
+          <h2 class="h3 text-center mb-4">アカウントにログイン</h2>
+
+          {% if error_message %}
+          <div class="alert alert-danger" role="alert">
+            <div class="d-flex"><i class="bi bi-exclamation-circle alert-icon"></i><div>{{ error_message }}</div></div>
+          </div>
+          {% endif %}
+
+          {% if info_message %}
+          <div class="alert alert-info" role="alert">
+            <div class="d-flex"><i class="bi bi-info-circle alert-icon"></i><div>{{ info_message }}</div></div>
+          </div>
+          {% endif %}
+
+          <form method="post" action="{{ url_for('auth.login_post') }}" autocomplete="off"{% if open_in_top %} target="_top"{% endif %}>
+            {{ form.hidden_tag() if form else '' }}
+            <div class="mb-3">
+              <label for="employee_no" class="form-label">社員番号</label>
+              <div class="input-icon">
+                <span class="input-icon-addon"><i class="bi bi-person-circle"></i></span>
+                <input type="text" class="form-control" id="employee_no" name="employee_no"
+                       placeholder="例: TEC-201" autocomplete="username" required autofocus>
+              </div>
+            </div>
+            <div class="mb-4">
+              <label for="password" class="form-label">パスワード</label>
+              <div class="input-icon">
+                <span class="input-icon-addon"><i class="bi bi-key"></i></span>
+                <input type="password" class="form-control" id="password" name="password"
+                       placeholder="パスワードを入力" autocomplete="current-password" required>
+              </div>
+            </div>
+            <div class="form-footer">
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-box-arrow-in-right me-1"></i>ログイン
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="text-center text-secondary mt-3 small">認証情報は管理者から発行されたものを使用してください。</div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='vendor/tabler/js/tabler.min.js') }}"></script>
+</body>
+</html>

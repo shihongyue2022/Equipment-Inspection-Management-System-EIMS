@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}アカウント一覧 - 設備点検管理システム{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-people me-2 text-primary"></i>アカウント一覧
+  </h2>
+  <!-- 新規登録ボタン -->
+  <a href="{{ url_for('accounts.new_get') }}" class="btn btn-primary">
+    <i class="bi bi-person-plus me-1"></i>新規登録
+  </a>
+</div>
+
+<!-- アカウント一覧テーブル -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    {% if user_list %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>氏名</th>
+            <th>社員番号</th>
+            <th>メールアドレス</th>
+            <th>ロール</th>
+            <th>拠点</th>
+            <th class="text-center">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in user_list %}
+          <tr>
+            <!-- 氏名（クリックで詳細へ） -->
+            <td>
+              <a href="{{ url_for('accounts.detail_get', user_id=user.id) }}"
+                 class="text-decoration-none fw-semibold">
+                {{ user.full_name }}
+              </a>
+            </td>
+            <td>{{ user.employee_no }}</td>
+            <td>{{ user.email }}</td>
+
+            <!-- ロールバッジ -->
+            <td>
+              {% if user.role == 'root' %}
+              <span class="badge bg-danger">ROOT</span>
+              {% elif user.role == 'admin' %}
+              <span class="badge bg-warning text-dark">管理者</span>
+              {% else %}
+              <span class="badge bg-info">FE</span>
+              {% endif %}
+            </td>
+
+            <td>{{ user.base if user.base else '─' }}</td>
+
+            <!-- 操作ボタン -->
+            <td class="text-center">
+              <a href="{{ url_for('accounts.detail_get', user_id=user.id) }}"
+                 class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-person-lines-fill"></i> 詳細
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <!-- ユーザーがない場合 -->
+    <div class="text-center text-muted py-5">
+      <i class="bi bi-people display-4"></i>
+      <p class="mt-2">アカウントが登録されていません。</p>
+      <a href="{{ url_for('accounts.new_get') }}" class="btn btn-primary mt-2">
+        <i class="bi bi-person-plus me-1"></i>新規登録する
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
