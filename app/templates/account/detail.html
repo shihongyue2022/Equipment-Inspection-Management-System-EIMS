@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user.full_name }} - アカウント詳細 - 設備点検管理システム{% endblock %}
+
+{% block content %}
+{# admin が root のアカウントを参照している場合は読み取り専用モードにする #}
+{% set is_admin_viewing_root = (session['user']['role'] == 'admin' and user.role == 'root') %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-person-circle me-2 text-primary"></i>アカウント詳細・編集
+  </h2>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body p-4">
+
+    <!-- root アカウントを admin が参照している場合の注意メッセージ -->
+    {% if is_admin_viewing_root %}
+    <div class="alert alert-warning" role="alert">
+      <i class="bi bi-shield-lock me-1"></i>rootアカウントは編集できません。
+    </div>
+    {% endif %}
+
+    <!-- バリデーションエラーメッセージ -->
+    {% if error_message %}
+    <div class="alert alert-danger" role="alert">
+      <i class="bi bi-exclamation-circle me-1"></i>{{ error_message }}
+    </div>
+    {% endif %}
+
+    <!-- アカウント編集フォーム（IDを付与してボタンから参照する） -->
+    <form id="edit-form" method="POST" action="{{ url_for('accounts.detail_post', user_id=user.id) }}">
+      <!-- CSRF対策トークン -->
+      {{ form.hidden_tag() if form else '' }}
+
+      <div class="row g-3">
+
+        <!-- 社員番号 -->
+        <div class="col-md-6">
+          <label for="employee_no" class="form-label">
+            社員番号 <span class="text-danger">*</span>
+          </label>
+          <input type="text"
+                 class="form-control"
+                 id="employee_no"
+                 name="employee_no"
+                 value="{{ user.employee_no }}"
+                 {% if is_admin_viewing_root %}disabled{% endif %}
+                 required>
+        </div>
+
+        <!-- 苗字 -->
+        <div class="col-md-6">
+          <label for="last_name" class="form-label">
+            苗字 <span class="text-danger">*</span>
+          </label>
+          <input type="text"
+                 class="form-control"
+                 id="last_name"
+                 name="last_name"
+                 value="{{ user.last_name }}"
+                 {% if is_admin_viewing_root %}disabled{% endif %}
+                 required>
+        </div>
+
+        <!-- 名前 -->
+        <div class="col-md-6">
+          <label for="first_name" class="form-label">
+            名前 <span class="text-danger">*</span>
+          </label>
+          <input type="text"
+                 class="form-control"
+                 id="first_name"
+                 name="first_name"
+                 value="{{ user.first_name }}"
+                 {% if is_admin_viewing_root %}disabled{% endif %}
+                 required>
+        </div>
+
+        <!-- メールアドレス -->
+        <div class="col-md-6">
+          <label for="email" class="form-label">
+            メールアドレス <span class="text-danger">*</span>
+          </label>
+          <input type="email"
+                 class="form-control"
+                 id="email"
+                 name="email"
+                 value="{{ user.email }}"
+                 {% if is_admin_viewing_root %}disabled{% endif %}
+                 required>
+        </div>
+
+        <!-- ロール -->
+        <div class="col-md-6">
+          <label class="form-label">
+            ロール <span class="text-danger">*</span>
+          </label>
+          <div class="d-flex gap-3 mt-1">
+            {% if user.role == 'root' %}
+            <!-- 対象が root の場合は読み取り専用でバッジ表示のみ（root は付与不可） -->
+            <input type="hidden" name="role" value="root">
+            <span class="badge bg-danger">ROOT</span>
+            {% elif session['user']['role'] == 'root' %}
+            <!-- root がログイン中：FE・管理者の2択をラジオボタンで表示 -->
+            <div class="form-check">
+              <input class="form-check-input"
+                     type="radio"
+                     name="role"
+                     id="role_engineer"
+                     value="engineer"
+                     {% if user.role == 'engineer' %}checked{% endif %}
+                     required>
+              <label class="form-check-label" for="role_engineer">
+                <span class="badge bg-info">FE（フィールドエンジニア）</span>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input"
+                     type="radio"
+                     name="role"
+                     id="role_admin"
+                     value="admin"
+                     {% if user.role == 'admin' %}checked{% endif %}>
+              <label class="form-check-label" for="role_admin">
+                <span class="badge bg-warning text-dark">管理者</span>
+              </label>
+            </div>
+            {% else %}
+            <!-- admin がログイン中：engineer のみ選択可なのでバッジ表示（選択肢1つ） -->
+            <input type="hidden" name="role" value="{{ user.role }}">
+            {% if user.role == 'engineer' %}
+            <span class="badge bg-info">FE（フィールドエンジニア）</span>
+            {% else %}
+            <span class="badge bg-warning text-dark">管理者</span>
+            {% endif %}
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- 携帯番号 -->
+        <div class="col-md-6">
+          <label for="phone" class="form-label">携帯番号</label>
+          <input type="tel"
+                 class="form-control"
+                 id="phone"
+                 name="phone"
+                 value="{{ user.phone if user.phone else '' }}"
+                 placeholder="例: 090-1234-5678"
+                 {% if is_admin_viewing_root %}disabled{% endif %}>
+        </div>
+
+        <!-- 拠点 -->
+        <div class="col-md-6">
+          <label for="base" class="form-label">拠点</label>
+          <input type="text"
+                 class="form-control"
+                 id="base"
+                 name="base"
+                 value="{{ user.base if user.base else '' }}"
+                 placeholder="例: 東雲中央サービス拠点"
+                 {% if is_admin_viewing_root %}disabled{% endif %}>
+        </div>
+
+      </div>
+
+    </form>
+
+    <!-- ボタングループ（保存・削除・戻る）：フォームの外側に配置してネストを回避 -->
+    <div class="mt-4 d-flex justify-content-between">
+      <div class="d-flex gap-2">
+        <!-- 保存ボタン（admin が root を参照している場合は非表示） -->
+        {% if not is_admin_viewing_root %}
+        <button type="submit" form="edit-form" class="btn btn-primary">
+          <i class="bi bi-check-circle me-1"></i>保存
+        </button>
+        {% endif %}
+        <!-- 戻るボタン -->
+        <a href="{{ url_for('accounts.list_get') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i>戻る
+        </a>
+      </div>
+
+      <!-- 削除フォーム：root以外を対象に、adminはrootのみ削除可 -->
+      {% if user.role != 'root' and (user.role != 'admin' or session['user']['role'] == 'root') %}
+      <form method="POST"
+            action="{{ url_for('accounts.delete_post', user_id=user.id) }}"
+            onsubmit="return confirm('「{{ user.full_name }}」のアカウントを削除しますか？この操作は取り消せません。')">
+        <!-- CSRF対策トークン -->
+        {{ form.hidden_tag() if form else '' }}
+        <button type="submit" class="btn btn-danger">
+          <i class="bi bi-trash me-1"></i>削除
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- パスワード変更フォーム（admin が root を参照している場合は非表示） -->
+{% if not is_admin_viewing_root %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">
+      <i class="bi bi-key me-1"></i>パスワード変更
+    </h5>
+  </div>
+  <div class="card-body p-4">
+    <form method="POST" action="{{ url_for('accounts.password_post', user_id=user.id) }}">
+      {{ form.hidden_tag() if form else '' }}
+      <div class="row g-3">
+
+        <!-- 自分自身のパスワード変更時のみ現在のパスワード入力欄を表示する -->
+        {% if session['user']['id'] == user.id %}
+        <div class="col-md-6">
+          <label for="current_password" class="form-label">
+            現在のパスワード <span class="text-danger">*</span>
+          </label>
+          <input type="password"
+                 class="form-control"
+                 id="current_password"
+                 name="current_password"
+                 placeholder="現在のパスワードを入力">
+        </div>
+        <div class="col-md-6"></div>
+        {% endif %}
+
+        <div class="col-md-6">
+          <label for="new_password" class="form-label">
+            新しいパスワード <span class="text-danger">*</span>
+          </label>
+          <input type="password"
+                 class="form-control"
+                 id="new_password"
+                 name="new_password"
+                 placeholder="新しいパスワードを入力">
+        </div>
+
+        <div class="col-md-6">
+          <label for="confirm_password" class="form-label">
+            新しいパスワード（確認） <span class="text-danger">*</span>
+          </label>
+          <input type="password"
+                 class="form-control"
+                 id="confirm_password"
+                 name="confirm_password"
+                 placeholder="もう一度入力">
+        </div>
+
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="btn btn-warning">
+          <i class="bi bi-key me-1"></i>パスワードを変更
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- 担当設備一覧 -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">
+      <i class="bi bi-tools me-1"></i>担当設備一覧
+    </h5>
+  </div>
+  <div class="card-body p-0">
+    {% if assigned_equipment_list %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>設備名</th>
+            <th>設置場所</th>
+            <th>次回点検日</th>
+            <th>期限ステータス</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for eq in assigned_equipment_list %}
+          <tr>
+            <td>
+              <a href="{{ url_for('equipment.detail_get', equipment_id=eq.id) }}"
+                 class="text-decoration-none">
+                {{ eq.name }}
+              </a>
+            </td>
+            <td>{{ eq.location }}</td>
+            <td>
+              {% if eq.next_inspection_date %}
+              {{ eq.next_inspection_date }}
+              {% else %}
+              <span class="text-muted">─（未点検）</span>
+              {% endif %}
+            </td>
+            <!-- 期限ステータスバッジ -->
+            <td>
+              {% if eq.deadline_status == 'overdue' %}
+              <span class="badge bg-danger">超過</span>
+              {% elif eq.deadline_status == 'soon' %}
+              <span class="badge bg-warning text-dark">まもなく</span>
+              {% elif eq.deadline_status == 'normal' %}
+              <span class="badge bg-success">正常</span>
+              {% else %}
+              <span class="text-muted">─</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <!-- 担当設備がない場合 -->
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-tools display-4"></i>
+      <p class="mt-2">担当設備はありません。</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

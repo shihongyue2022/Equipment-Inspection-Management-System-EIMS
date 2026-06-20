@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env_backup
+.env*.backup
+.git/
+.legacy-history.bundle
+.private-recovery/
+preview_screenshots/
+docs/
+tests/
+*.md
+.gitignore

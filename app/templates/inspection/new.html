@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}点検記録登録 - 設備点検管理システム{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-clipboard-plus me-2 text-primary"></i>点検記録登録
+  </h2>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-4">
+
+    <!-- バリデーションエラーメッセージ -->
+    {% if error_message %}
+    <div class="alert alert-danger" role="alert">
+      <i class="bi bi-exclamation-circle me-1"></i>{{ error_message }}
+    </div>
+    {% endif %}
+
+    <!-- 点検記録登録フォーム -->
+    <form method="POST" action="{{ url_for('inspections.new_post') }}">
+      <!-- CSRF対策トークン -->
+      {{ form.hidden_tag() if form else '' }}
+
+      <div class="row g-3">
+
+        <!-- 対象設備（FEは担当設備のみ選択可） -->
+        <div class="col-md-12">
+          <label for="equipment_id" class="form-label">
+            対象設備 <span class="text-danger">*</span>
+          </label>
+          <select class="form-select"
+                  id="equipment_id"
+                  name="equipment_id"
+                  required>
+            <option value="">設備を選択してください</option>
+            {% for eq in equipment_list %}
+            <option value="{{ eq.id }}"
+              {% if selected_equipment_id and selected_equipment_id == eq.id %}selected{% endif %}>
+              {{ eq.name }}（{{ eq.location }}）
+            </option>
+            {% endfor %}
+          </select>
+          {% if session['user']['role'] == 'engineer' %}
+          <div class="form-text">担当設備のみ表示されています。</div>
+          {% endif %}
+        </div>
+
+        <!-- 点検実施日 -->
+        <div class="col-md-6">
+          <label for="inspected_at" class="form-label">
+            点検実施日 <span class="text-danger">*</span>
+          </label>
+          <input type="date"
+                 class="form-control"
+                 id="inspected_at"
+                 name="inspected_at"
+                 value="{{ form_data.inspected_at if form_data else today }}"
+                 required>
+        </div>
+
+        <!-- 点検ステータス -->
+        <div class="col-md-6">
+          <label class="form-label">
+            点検ステータス <span class="text-danger">*</span>
+          </label>
+          <div class="d-flex gap-3 mt-1">
+
+            <!-- 異常なし -->
+            <div class="form-check">
+              <input class="form-check-input"
+                     type="radio"
+                     name="status"
+                     id="status_normal"
+                     value="normal"
+                     {% if not form_data or form_data.status == 'normal' %}checked{% endif %}
+                     required>
+              <label class="form-check-label" for="status_normal">
+                <span class="badge bg-success">異常なし</span>
+              </label>
+            </div>
+
+            <!-- 要観察 -->
+            <div class="form-check">
+              <input class="form-check-input"
+                     type="radio"
+                     name="status"
+                     id="status_watch"
+                     value="watch"
+                     {% if form_data and form_data.status == 'watch' %}checked{% endif %}>
+              <label class="form-check-label" for="status_watch">
+                <span class="badge bg-warning text-dark">要観察</span>
+              </label>
+            </div>
+
+            <!-- 要修理 -->
+            <div class="form-check">
+              <input class="form-check-input"
+                     type="radio"
+                     name="status"
+                     id="status_repair"
+                     value="repair"
+                     {% if form_data and form_data.status == 'repair' %}checked{% endif %}>
+              <label class="form-check-label" for="status_repair">
+                <span class="badge bg-danger">要修理</span>
+              </label>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 備考 -->
+        <div class="col-md-12">
+          <label for="note" class="form-label">備考</label>
+          <textarea class="form-control"
+                    id="note"
+                    name="note"
+                    rows="4"
+                    placeholder="特記事項があれば入力してください（任意）">{{ form_data.note if form_data and form_data.note else '' }}</textarea>
+        </div>
+
+      </div>
+
+      <!-- 登録後の案内メッセージ -->
+      <div class="alert alert-info mt-3" role="alert">
+        <i class="bi bi-info-circle me-1"></i>
+        登録すると次回点検予定日が自動的に更新されます。
+      </div>
+
+      <!-- ボタングループ -->
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-check-circle me-1"></i>登録
+        </button>
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-x-circle me-1"></i>キャンセル
+        </a>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+{% endblock %}

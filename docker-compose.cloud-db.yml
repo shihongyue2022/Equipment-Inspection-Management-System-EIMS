@@ -1,0 +1,12 @@
+services:
+  web:
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-4000}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-inspection_db}
+      DB_SSL: ${DB_SSL:-true}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+      FLASK_DEBUG: 0
+    depends_on: !reset []

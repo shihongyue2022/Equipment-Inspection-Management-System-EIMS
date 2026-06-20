@@ -1,0 +1,40 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: inspection_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: inspection_db
+    ports:
+      - "3307:3306"
+    volumes:
+      # DBボリュームが初回作成時のみ init.sql を実行する
+      - ./app/database/create_app_db.sql:/docker-entrypoint-initdb.d/init.sql
+      # コンテナ削除後もMySQLデータを保持する
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+  web:
+    build: .
+    container_name: inspection_web
+    ports:
+      - "5000:5000"
+    environment:
+      # Docker内部ではコンテナ名 db、ポート 3306（内部ポート）を使う
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: rootpass
+      DB_NAME: inspection_db
+      SECRET_KEY: change-this-in-production
+      FLASK_DEBUG: 0
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
