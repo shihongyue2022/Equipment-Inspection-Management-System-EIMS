@@ -63,6 +63,14 @@ body { min-height: 100vh; }
 }
 .dashboard-filter-select { width: min(13rem, 100%); }
 .dashboard-setting-select { width: auto; min-width: 7.5rem; }
+.management-filter-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+.management-filter-form > .form-select { width: auto; max-width: 14rem; }
+.management-filter-search { display: flex; min-width: min(18rem, 100%); gap: .35rem; }
 
 .group-chart-head,
 .group-chart-summary {
@@ -344,6 +352,8 @@ tr[data-status="soon"] { background: rgba(247, 103, 7, .05); }
   .dashboard-control-label { width: 100%; }
   .dashboard-filter-select,
   .dashboard-setting-select { width: 100%; }
+  .management-filter-form > .form-select,
+  .management-filter-search { width: 100%; max-width: none; }
   .group-chart-head { display: none; }
   .group-chart-summary {
     grid-template-columns: 1fr 1.25rem;

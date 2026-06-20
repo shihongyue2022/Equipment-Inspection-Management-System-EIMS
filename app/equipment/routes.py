@@ -53,25 +53,24 @@ def list_get():
         "deadline": {item["value"] for item in filter_options["deadlines"]},
     }
     normalized = False
-    for value, allowed, clear in (
-        (selected_base, valid["base"], lambda: None),
-        (selected_type, valid["equipment_type"], lambda: None),
-        (selected_manufacturer, valid["manufacturer"], lambda: None),
-        (selected_engineer, valid["engineer_id"], lambda: None),
-        (selected_deadline, valid["deadline"], lambda: None),
+    if selected_base is not None and selected_base not in valid["base"]:
+        selected_base = None
+        normalized = True
+    if selected_type is not None and selected_type not in valid["equipment_type"]:
+        selected_type = None
+        normalized = True
+    if (
+        selected_manufacturer is not None
+        and selected_manufacturer not in valid["manufacturer"]
     ):
-        if value is not None and value not in allowed:
-            normalized = True
-            if value == selected_base:
-                selected_base = clear()
-            elif value == selected_type:
-                selected_type = clear()
-            elif value == selected_manufacturer:
-                selected_manufacturer = clear()
-            elif value == selected_engineer:
-                selected_engineer = clear()
-            else:
-                selected_deadline = clear()
+        selected_manufacturer = None
+        normalized = True
+    if selected_engineer is not None and selected_engineer not in valid["engineer_id"]:
+        selected_engineer = None
+        normalized = True
+    if selected_deadline is not None and selected_deadline not in valid["deadline"]:
+        selected_deadline = None
+        normalized = True
     if normalized:
         filter_options = service.equipment_management_filter_options(**filters())
 

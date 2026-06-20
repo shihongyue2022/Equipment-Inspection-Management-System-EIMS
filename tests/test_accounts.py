@@ -67,3 +67,27 @@ def test_engineer_changes_own_password(client, app):
     )
     assert response.status_code == 200
     assert "パスワードを変更しました" in response.text
+
+
+def test_account_management_combines_search_filters(client):
+    login_as(client, "root")
+
+    response = client.get(
+        "/accounts?q=朝霧&role=engineer&base=東雲中央サービス拠点"
+    )
+
+    assert response.status_code == 200
+    assert "1 件一致" in response.text
+    assert "朝霧湊" in response.text
+    assert "月岡澪" not in response.text
+
+
+def test_account_management_hides_empty_facet_options(client):
+    login_as(client, "root")
+
+    response = client.get("/accounts?base=東雲中央サービス拠点")
+
+    assert response.status_code == 200
+    assert "FE（1）" in response.text
+    assert "管理者（1）" not in response.text
+    assert "水鏡西部サービス拠点（1）" in response.text
