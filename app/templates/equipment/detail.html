@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}{{ equipment.name }} - 設備詳細 - 設備点検管理システム{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <i class="bi bi-info-circle me-2 text-primary"></i>設備詳細
+  </h2>
+  <!-- root・管理者のみ編集ボタンを表示 -->
+  {% if session['user']['role'] in ['root', 'admin'] %}
+  <a href="{{ url_for('equipment.edit_get', equipment_id=equipment.id) }}" class="btn btn-outline-secondary">
+    <i class="bi bi-pencil me-1"></i>編集
+  </a>
+  {% endif %}
+</div>
+
+<!-- 設備基本情報カード -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">{{ equipment.name }}</h5>
+    <!-- 期限ステータスバッジ -->
+    {% if equipment.deadline_status == 'overdue' %}
+    <span class="badge bg-danger fs-6">超過</span>
+    {% elif equipment.deadline_status == 'soon' %}
+    <span class="badge bg-warning text-dark fs-6">まもなく</span>
+    {% elif equipment.deadline_status == 'normal' %}
+    <span class="badge bg-success fs-6">正常</span>
+    {% else %}
+    <span class="badge bg-secondary fs-6">未点検</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+
+      <!-- 設備ID -->
+      <div class="col-md-6">
+        <label class="text-muted small">設備ID</label>
+        <div class="fw-semibold">{{ equipment.id }}</div>
+      </div>
+
+      <!-- 設置場所 -->
+      <div class="col-md-6">
+        <label class="text-muted small">設置場所</label>
+        <div class="fw-semibold">{{ equipment.location }}</div>
+      </div>
+
+      <!-- 設備種別 -->
+      <div class="col-md-6">
+        <label class="text-muted small">設備種別</label>
+        <div class="fw-semibold">{{ equipment.equipment_type }}</div>
+      </div>
+
+      <!-- 製造メーカー -->
+      <div class="col-md-6">
+        <label class="text-muted small">製造メーカー</label>
+        <div class="fw-semibold">{{ equipment.manufacturer }}</div>
+      </div>
+
+      <!-- 型番 -->
+      <div class="col-md-6">
+        <label class="text-muted small">型番</label>
+        <div class="fw-semibold">{{ equipment.model_number }}</div>
+      </div>
+
+      <!-- 設置年月 -->
+      <div class="col-md-6">
+        <label class="text-muted small">設置年月</label>
+        <div class="fw-semibold">{{ equipment.installed_at }}</div>
+      </div>
+
+      <!-- 点検間隔 -->
+      <div class="col-md-6">
+        <label class="text-muted small">点検間隔</label>
+        <div class="fw-semibold">{{ equipment.inspection_interval_months }}ヶ月ごと</div>
+      </div>
+
+      <!-- 担当エンジニア -->
+      <div class="col-md-6">
+        <label class="text-muted small">担当エンジニア</label>
+        <div class="fw-semibold">
+          {{ equipment.assigned_user_name if equipment.assigned_user_name else '未割当' }}
+        </div>
+      </div>
+
+      <!-- 次回点検日 -->
+      <div class="col-md-6">
+        <label class="text-muted small">次回点検日</label>
+        <div class="fw-semibold">
+          {% if equipment.next_inspection_date %}
+          {{ equipment.next_inspection_date }}
+          {% else %}
+          <span class="text-muted">─（未点検）</span>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ボタングループ -->
+    <div class="mt-4 d-flex gap-2">
+      <!-- 点検記録登録ボタン -->
+      <a href="{{ url_for('inspections.new_get') }}?equipment_id={{ equipment.id }}"
+         class="btn btn-primary">
+        <i class="bi bi-clipboard-plus me-1"></i>点検記録登録
+      </a>
+      <!-- 戻るボタン（遷移元に応じて戻り先が変わる） -->
+      <a href="{{ back_url if back_url else url_for('dashboard.index') }}"
+         class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>戻る
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- 点検記録一覧（新しい順） -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white py-3">
+    <h5 class="mb-0">
+      <i class="bi bi-clipboard-data me-1"></i>点検記録一覧
+    </h5>
+  </div>
+  <div class="card-body p-0">
+    {% if inspection_records %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>点検実施日</th>
+            <th>点検ステータス</th>
+            <th>実施者</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for record in inspection_records %}
+          <tr>
+            <td>{{ record.inspected_at }}</td>
+
+            <!-- 点検ステータスバッジ -->
+            <td>
+              {% if record.status == 'normal' %}
+              <span class="badge bg-success">異常なし</span>
+              {% elif record.status == 'watch' %}
+              <span class="badge bg-warning text-dark">要観察</span>
+              {% elif record.status == 'repair' %}
+              <span class="badge bg-danger">要修理</span>
+              {% endif %}
+            </td>
+
+            <td>{{ record.engineer_name }}</td>
+            <td>{{ record.note if record.note else '─' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <!-- 点検記録がない場合 -->
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-clipboard display-4"></i>
+      <p class="mt-2">まだ点検記録がありません。</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
