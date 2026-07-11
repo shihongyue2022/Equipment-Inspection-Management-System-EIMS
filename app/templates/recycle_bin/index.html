@@ -1,0 +1,1162 @@
+{% extends "base.html" %}
+
+{% block title %}ゴミ箱 - 設備点検管理システム{% endblock %}
+
+{% block content %}
+<style>
+  /* ページネーションで非表示になった行 */
+  .page-hidden   { display: none; }
+  /* フィルターで非表示になった行 */
+  .filter-hidden { display: none; }
+  /* ソート可能なヘッダー */
+  .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
+  .sortable-th:hover { background: #e9ecef !important; }
+  .sort-icon { font-size: 0.7rem; color: #adb5bd; margin-left: 3px; }
+  .sort-icon.active { color: #0d6efd; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0"><i class="bi bi-trash3 me-2 text-primary"></i>ゴミ箱</h2>
+  <small class="text-muted">削除済みデータの一覧・復元ができます（管理者専用）</small>
+</div>
+
+<!-- タブナビゲーション -->
+<ul class="nav nav-tabs mb-3" id="recycleTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="equipment-tab" data-bs-toggle="tab"
+            data-bs-target="#equipment-pane" type="button" role="tab">
+      <i class="bi bi-gear me-1"></i>設備
+      {% if deleted_equipment %}
+      <span class="badge bg-secondary ms-1" id="eq-tab-badge">{{ deleted_equipment|length }}</span>
+      {% endif %}
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="user-tab" data-bs-toggle="tab"
+            data-bs-target="#user-pane" type="button" role="tab">
+      <i class="bi bi-person me-1"></i>アカウント
+      {% if deleted_users %}
+      <span class="badge bg-secondary ms-1" id="usr-tab-badge">{{ deleted_users|length }}</span>
+      {% endif %}
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="inspection-tab" data-bs-toggle="tab"
+            data-bs-target="#inspection-pane" type="button" role="tab">
+      <i class="bi bi-clipboard-check me-1"></i>点検記録
+      {% if deleted_inspections %}
+      <span class="badge bg-secondary ms-1" id="ir-tab-badge">{{ deleted_inspections|length }}</span>
+      {% endif %}
+    </button>
+  </li>
+</ul>
+
+<!-- タブコンテンツ -->
+<div class="tab-content" id="recycleTabContent">
+
+  <!-- ===== 設備タブ ===== -->
+  <div class="tab-pane fade show active" id="equipment-pane" role="tabpanel">
+    {% if deleted_equipment %}
+
+    <!-- フィルターと一括操作バーをまとめてスクロール時上部に固定する -->
+    <div style="position: sticky; top: 0; z-index: 100; background: #f8f9fa; padding-bottom: 0.5rem;">
+    <!-- 設備フィルターバー -->
+    <div class="card border-0 shadow-sm mb-0">
+      <div class="card-body py-2">
+        <div class="d-flex flex-wrap gap-3 align-items-end">
+          <div>
+            <label class="form-label small text-muted mb-1">設備名</label>
+            <input type="text" id="eq-filter-name" class="form-control" style="width:180px;"
+                   placeholder="設備名で検索">
+          </div>
+          <div>
+            <label class="form-label small text-muted mb-1">種別</label>
+            <input type="text" id="eq-filter-type" class="form-control" style="width:140px;"
+                   placeholder="種別で検索">
+          </div>
+          <div>
+            <label class="form-label small text-muted mb-1">削除者</label>
+            <input type="text" id="eq-filter-deleter" class="form-control" style="width:140px;"
+                   placeholder="削除者で検索">
+          </div>
+          <div class="ms-auto d-flex align-items-end gap-2">
+            <small class="text-muted" id="eq-result-count">{{ deleted_equipment|length }} 件</small>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="eq-reset-btn">
+              リセット<i class="bi bi-x-lg ms-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 設備一括操作バー：1件以上選択したときに表示する -->
+    <div id="eq-bulk-bar" class="alert alert-secondary d-flex align-items-center gap-2 py-2 d-none mt-2 mb-0" role="alert">
+      <i class="bi bi-check2-square fs-5"></i>
+      <span class="fw-semibold"><span id="eq-selected-count">0</span> 件選択中</span>
+      <button type="button" class="btn btn-sm btn-success ms-2"
+              data-bs-toggle="modal" data-bs-target="#bulkRestoreEqModal">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>一括復元
+      </button>
+      {% if session['user']['role'] == 'root' %}
+      <button type="button" class="btn btn-sm btn-danger"
+              data-bs-toggle="modal" data-bs-target="#bulkHardDeleteEqModal">
+        <i class="bi bi-trash3-fill me-1"></i>一括完全削除
+      </button>
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="eq-clear-btn">
+        <i class="bi bi-x me-1"></i>選択解除
+      </button>
+    </div>
+    </div><!-- /sticky wrapper -->
+
+    <div class="table-responsive mt-2">
+      <table class="table table-bordered table-hover align-middle" id="eqTable">
+        <thead class="table-light">
+          <tr>
+            <!-- 全選択チェックボックス＋選択モードドロップダウン -->
+            <th style="width:40px">
+              <div class="d-flex align-items-center gap-1">
+                <input type="checkbox" id="eq-select-all" class="form-check-input">
+                <div class="dropdown">
+                  <button class="btn btn-link btn-sm p-0 text-secondary" type="button"
+                          data-bs-toggle="dropdown" title="選択オプション">
+                    <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i>
+                  </button>
+                  <ul class="dropdown-menu" style="min-width:220px;">
+                    <li><button class="dropdown-item small" id="eq-select-page-btn" type="button">
+                      <i class="bi bi-check2-square me-1"></i>このページを全選択
+                    </button></li>
+                    <li><button class="dropdown-item small" id="eq-select-all-filtered-btn" type="button">
+                      <i class="bi bi-check2-all me-1"></i>条件一致をすべて選択
+                      （<span id="eq-filtered-total">0</span>件）
+                    </button></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><button class="dropdown-item small text-danger" id="eq-deselect-all-btn" type="button">
+                      <i class="bi bi-x-square me-1"></i>すべての選択を解除
+                    </button></li>
+                  </ul>
+                </div>
+              </div>
+            </th>
+            <th class="sortable-th" data-sort-table="eq" data-sort-key="name">
+              設備名 <i class="bi bi-arrow-down-up sort-icon" id="eq-sort-name"></i>
+            </th>
+            <th>設置場所</th>
+            <th class="sortable-th" data-sort-table="eq" data-sort-key="type">
+              設備種別 <i class="bi bi-arrow-down-up sort-icon" id="eq-sort-type"></i>
+            </th>
+            <th>担当者</th>
+            <th class="sortable-th" data-sort-table="eq" data-sort-key="deletedAt">
+              削除日時 <i class="bi bi-arrow-down sort-icon active" id="eq-sort-deletedAt"></i>
+            </th>
+            <th class="sortable-th" data-sort-table="eq" data-sort-key="deleter">
+              削除者 <i class="bi bi-arrow-down-up sort-icon" id="eq-sort-deleter"></i>
+            </th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for eq in deleted_equipment %}
+          <tr data-name="{{ eq.name }}"
+              data-type="{{ eq.equipment_type }}"
+              data-deleted-at="{{ eq.deleted_at.strftime('%Y%m%d%H%M%S') if eq.deleted_at else '00000000000000' }}"
+              data-deleted-at-label="{{ eq.deleted_at.strftime('%Y/%m/%d %H:%M') if eq.deleted_at else '―' }}"
+              data-deleter="{{ eq.deleted_by_name or '' }}">
+            <td>
+              <input type="checkbox" class="form-check-input eq-checkbox" value="{{ eq.id }}">
+            </td>
+            <td>{{ eq.name }}</td>
+            <td>{{ eq.location }}</td>
+            <td>{{ eq.equipment_type }}</td>
+            <td>{{ eq.assigned_user_name or '―' }}</td>
+            <td>{{ eq.deleted_at.strftime('%Y/%m/%d %H:%M') if eq.deleted_at else '―' }}</td>
+            <td>{{ eq.deleted_by_name or '―' }}</td>
+            <td class="d-flex gap-1">
+              <form method="POST"
+                    action="{{ url_for('recycle_bin_equipment_restore_post', id=eq.id) }}"
+                    onsubmit="return confirm('設備「{{ eq.name }}」を復元しますか？\n関連する点検記録も同時に復元されます。')">
+                {{ form.hidden_tag() }}
+                <button type="submit" class="btn btn-sm btn-outline-success">
+                  <i class="bi bi-arrow-counterclockwise me-1"></i>復元
+                </button>
+              </form>
+              {% if session['user']['role'] == 'root' %}
+              <button type="button" class="btn btn-sm btn-danger"
+                      data-bs-toggle="modal" data-bs-target="#hardDeleteModal"
+                      data-item-id="{{ eq.id }}"
+                      data-item-name="{{ eq.name }}"
+                      data-item-type="equipment">
+                <i class="bi bi-trash3-fill me-1"></i>完全削除
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 設備ページネーション -->
+    <div class="text-center mt-2 px-1 pb-2">
+      <small class="text-muted d-block mb-1" id="eq-page-info"></small>
+      <div id="eq-pagination"></div>
+    </div>
+
+    {% else %}
+    <div class="text-center text-muted py-5">
+      <i class="bi bi-inbox fs-1"></i>
+      <p class="mt-2">削除済みの設備はありません。</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ===== アカウントタブ ===== -->
+  <div class="tab-pane fade" id="user-pane" role="tabpanel">
+    {% if deleted_users %}
+
+    <!-- フィルターと一括操作バーをまとめてスクロール時上部に固定する -->
+    <div style="position: sticky; top: 0; z-index: 100; background: #f8f9fa; padding-bottom: 0.5rem;">
+    <!-- アカウントフィルターバー -->
+    <div class="card border-0 shadow-sm mb-0">
+      <div class="card-body py-2">
+        <div class="d-flex flex-wrap gap-3 align-items-end">
+          <div>
+            <label class="form-label small text-muted mb-1">氏名 / 社員番号</label>
+            <input type="text" id="usr-filter-name" class="form-control" style="width:180px;"
+                   placeholder="氏名または社員番号">
+          </div>
+          <div>
+            <label class="form-label small text-muted mb-1">ロール</label>
+            <select id="usr-filter-role" class="form-select" style="width:120px;">
+              <option value="">すべて</option>
+              <option value="root">ROOT</option>
+              <option value="admin">管理者</option>
+              <option value="engineer">FE</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label small text-muted mb-1">削除者</label>
+            <input type="text" id="usr-filter-deleter" class="form-control" style="width:140px;"
+                   placeholder="削除者で検索">
+          </div>
+          <div class="ms-auto d-flex align-items-end gap-2">
+            <small class="text-muted" id="usr-result-count">{{ deleted_users|length }} 件</small>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="usr-reset-btn">
+              リセット<i class="bi bi-x-lg ms-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- アカウント一括操作バー -->
+    <div id="usr-bulk-bar" class="alert alert-secondary d-flex align-items-center gap-2 py-2 d-none mt-2 mb-0" role="alert">
+      <i class="bi bi-check2-square fs-5"></i>
+      <span class="fw-semibold"><span id="usr-selected-count">0</span> 件選択中</span>
+      <button type="button" class="btn btn-sm btn-success ms-2"
+              data-bs-toggle="modal" data-bs-target="#bulkRestoreUsrModal">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>一括復元
+      </button>
+      {% if session['user']['role'] == 'root' %}
+      <button type="button" class="btn btn-sm btn-danger"
+              data-bs-toggle="modal" data-bs-target="#bulkHardDeleteUsrModal">
+        <i class="bi bi-trash3-fill me-1"></i>一括完全削除
+      </button>
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="usr-clear-btn">
+        <i class="bi bi-x me-1"></i>選択解除
+      </button>
+    </div>
+    </div><!-- /sticky wrapper -->
+
+    <div class="table-responsive mt-2">
+      <table class="table table-bordered table-hover align-middle" id="usrTable">
+        <thead class="table-light">
+          <tr>
+            <!-- 全選択チェックボックス＋選択モードドロップダウン -->
+            <th style="width:40px">
+              <div class="d-flex align-items-center gap-1">
+                <input type="checkbox" id="usr-select-all" class="form-check-input">
+                <div class="dropdown">
+                  <button class="btn btn-link btn-sm p-0 text-secondary" type="button"
+                          data-bs-toggle="dropdown" title="選択オプション">
+                    <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i>
+                  </button>
+                  <ul class="dropdown-menu" style="min-width:220px;">
+                    <li><button class="dropdown-item small" id="usr-select-page-btn" type="button">
+                      <i class="bi bi-check2-square me-1"></i>このページを全選択
+                    </button></li>
+                    <li><button class="dropdown-item small" id="usr-select-all-filtered-btn" type="button">
+                      <i class="bi bi-check2-all me-1"></i>条件一致をすべて選択
+                      （<span id="usr-filtered-total">0</span>件）
+                    </button></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><button class="dropdown-item small text-danger" id="usr-deselect-all-btn" type="button">
+                      <i class="bi bi-x-square me-1"></i>すべての選択を解除
+                    </button></li>
+                  </ul>
+                </div>
+              </div>
+            </th>
+            <th class="sortable-th" data-sort-table="usr" data-sort-key="employeeNo">
+              社員番号 <i class="bi bi-arrow-down-up sort-icon" id="usr-sort-employeeNo"></i>
+            </th>
+            <th class="sortable-th" data-sort-table="usr" data-sort-key="name">
+              氏名 <i class="bi bi-arrow-down-up sort-icon" id="usr-sort-name"></i>
+            </th>
+            <th class="sortable-th" data-sort-table="usr" data-sort-key="role">
+              ロール <i class="bi bi-arrow-down-up sort-icon" id="usr-sort-role"></i>
+            </th>
+            <th>拠点</th>
+            <th class="sortable-th" data-sort-table="usr" data-sort-key="deletedAt">
+              削除日時 <i class="bi bi-arrow-down sort-icon active" id="usr-sort-deletedAt"></i>
+            </th>
+            <th class="sortable-th" data-sort-table="usr" data-sort-key="deleter">
+              削除者 <i class="bi bi-arrow-down-up sort-icon" id="usr-sort-deleter"></i>
+            </th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in deleted_users %}
+          <tr data-name="{{ u.last_name }}{{ u.first_name }}"
+              data-employee-no="{{ u.employee_no }}"
+              data-role="{{ u.role }}"
+              data-deleted-at="{{ u.deleted_at.strftime('%Y%m%d%H%M%S') if u.deleted_at else '00000000000000' }}"
+              data-deleted-at-label="{{ u.deleted_at.strftime('%Y/%m/%d %H:%M') if u.deleted_at else '―' }}"
+              data-deleter="{{ u.deleted_by_name or '' }}">
+            <td>
+              <input type="checkbox" class="form-check-input usr-checkbox" value="{{ u.id }}">
+            </td>
+            <td>{{ u.employee_no }}</td>
+            <td>{{ u.last_name }}{{ u.first_name }}</td>
+            <td>
+              {% if u.role == 'root' %}
+              <span class="badge bg-danger">ROOT</span>
+              {% elif u.role == 'admin' %}
+              <span class="badge bg-warning text-dark">管理者</span>
+              {% else %}
+              <span class="badge bg-info">FE</span>
+              {% endif %}
+            </td>
+            <td>{{ u.base or '―' }}</td>
+            <td>{{ u.deleted_at.strftime('%Y/%m/%d %H:%M') if u.deleted_at else '―' }}</td>
+            <td>{{ u.deleted_by_name or '―' }}</td>
+            <td class="d-flex gap-1">
+              <button type="button" class="btn btn-sm btn-outline-success"
+                      data-user-id="{{ u.id }}"
+                      data-user-name="{{ u.last_name }}{{ u.first_name }}"
+                      onclick="openUsrRestoreModal(this)">
+                <i class="bi bi-arrow-counterclockwise me-1"></i>復元
+              </button>
+              {% if session['user']['role'] == 'root' %}
+              <button type="button" class="btn btn-sm btn-danger"
+                      data-bs-toggle="modal" data-bs-target="#hardDeleteModal"
+                      data-item-id="{{ u.id }}"
+                      data-item-name="{{ u.last_name }}{{ u.first_name }}"
+                      data-item-type="user">
+                <i class="bi bi-trash3-fill me-1"></i>完全削除
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- アカウントページネーション -->
+    <div class="text-center mt-2 px-1 pb-2">
+      <small class="text-muted d-block mb-1" id="usr-page-info"></small>
+      <div id="usr-pagination"></div>
+    </div>
+
+    {% else %}
+    <div class="text-center text-muted py-5">
+      <i class="bi bi-inbox fs-1"></i>
+      <p class="mt-2">削除済みのアカウントはありません。</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ===== 点検記録タブ ===== -->
+  <div class="tab-pane fade" id="inspection-pane" role="tabpanel">
+    <div class="alert alert-info d-flex align-items-center mb-3" role="alert">
+      <i class="bi bi-info-circle-fill me-2"></i>
+      点検記録は設備またはアカウントを復元すると、自動的に一緒に復元されます。
+    </div>
+    {% if deleted_inspections %}
+
+    <!-- 点検記録フィルターバー -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body py-2">
+        <div class="d-flex flex-wrap gap-3 align-items-end">
+          <div>
+            <label class="form-label small text-muted mb-1">設備名</label>
+            <input type="text" id="ir-filter-name" class="form-control" style="width:180px;"
+                   placeholder="設備名で検索">
+          </div>
+          <div>
+            <label class="form-label small text-muted mb-1">ステータス</label>
+            <select id="ir-filter-status" class="form-select" style="width:130px;">
+              <option value="">すべて</option>
+              <option value="normal">正常</option>
+              <option value="watch">要観察</option>
+              <option value="repair">要修理</option>
+            </select>
+          </div>
+          <div class="ms-auto d-flex align-items-end gap-2">
+            <small class="text-muted" id="ir-result-count">{{ deleted_inspections|length }} 件</small>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="ir-reset-btn">
+              リセット<i class="bi bi-x-lg ms-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover align-middle" id="irTable">
+        <thead class="table-light">
+          <tr>
+            <th class="sortable-th" data-sort-table="ir" data-sort-key="equipName">
+              設備名 <i class="bi bi-arrow-down-up sort-icon" id="ir-sort-equipName"></i>
+            </th>
+            <th>点検者</th>
+            <th class="sortable-th" data-sort-table="ir" data-sort-key="inspectedAt">
+              点検日 <i class="bi bi-arrow-down-up sort-icon" id="ir-sort-inspectedAt"></i>
+            </th>
+            <th class="sortable-th" data-sort-table="ir" data-sort-key="status">
+              ステータス <i class="bi bi-arrow-down-up sort-icon" id="ir-sort-status"></i>
+            </th>
+            <th class="sortable-th" data-sort-table="ir" data-sort-key="deletedAt">
+              削除日時 <i class="bi bi-arrow-down sort-icon active" id="ir-sort-deletedAt"></i>
+            </th>
+            <th>削除者</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ir in deleted_inspections %}
+          <tr data-equip-name="{{ ir.equipment_name or '' }}"
+              data-status="{{ ir.status }}"
+              data-inspected-at="{{ ir.inspected_at.strftime('%Y%m%d') if ir.inspected_at else '00000000' }}"
+              data-deleted-at="{{ ir.deleted_at.strftime('%Y%m%d%H%M%S') if ir.deleted_at else '00000000000000' }}">
+            <td>{{ ir.equipment_name or '―' }}</td>
+            <td>{{ ir.engineer_name or '―' }}</td>
+            <td>{{ ir.inspected_at.strftime('%Y/%m/%d') if ir.inspected_at else '―' }}</td>
+            <td>
+              {% if ir.status == 'normal' %}
+              <span class="badge bg-success">正常</span>
+              {% elif ir.status == 'watch' %}
+              <span class="badge bg-warning text-dark">要観察</span>
+              {% elif ir.status == 'repair' %}
+              <span class="badge bg-danger">要修理</span>
+              {% else %}
+              <span class="badge bg-secondary">不明</span>
+              {% endif %}
+            </td>
+            <td>{{ ir.deleted_at.strftime('%Y/%m/%d %H:%M') if ir.deleted_at else '―' }}</td>
+            <td>{{ ir.deleted_by_name or '―' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 点検記録ページネーション -->
+    <div class="text-center mt-2 px-1 pb-2">
+      <small class="text-muted d-block mb-1" id="ir-page-info"></small>
+      <div id="ir-pagination"></div>
+    </div>
+
+    {% else %}
+    <div class="text-center text-muted py-5">
+      <i class="bi bi-inbox fs-1"></i>
+      <p class="mt-2">削除済みの点検記録はありません。</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ===== 設備 一括復元モーダル ===== -->
+<div class="modal fade" id="bulkRestoreEqModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-2 text-success"></i>設備の一括復元</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('recycle_bin_equipment_bulk_restore_post') }}">
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="equipment_ids" id="bulk-restore-eq-ids">
+        <div class="modal-body">
+          <p>選択した <strong><span id="bulk-restore-eq-count">0</span> 件</strong> の設備を復元しますか？</p>
+          <p class="text-muted small mb-0"><i class="bi bi-info-circle me-1"></i>関連する点検記録も同時に復元されます。</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>復元する
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== アカウント 単体復元モーダル ===== -->
+<div class="modal fade" id="usrRestoreModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-2 text-success"></i>アカウントの復元</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="usrRestoreForm" method="POST" action="">
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="restore_equipment" value="1">
+        <div class="modal-body">
+          <p id="usrRestoreMessage" class="mb-3"></p>
+          <div class="alert alert-info py-2 mb-0 small">
+            <i class="bi bi-info-circle me-1"></i>
+            削除前に担当していた設備を自動で再割り当てします。既に別の担当者がいる設備は対象外です。
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>復元する
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== アカウント 一括復元モーダル ===== -->
+<div class="modal fade" id="bulkRestoreUsrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-counterclockwise me-2 text-success"></i>アカウントの一括復元</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('recycle_bin_user_bulk_restore_post') }}">
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="user_ids" id="bulk-restore-usr-ids">
+        <input type="hidden" name="restore_equipment" value="1">
+        <div class="modal-body">
+          <p>選択した <strong><span id="bulk-restore-usr-count">0</span> 件</strong> のアカウントを復元しますか？</p>
+          <div class="alert alert-info py-2 mb-0 small">
+            <i class="bi bi-info-circle me-1"></i>
+            削除前に担当していた設備を自動で再割り当てします。既に別の担当者がいる設備は対象外です。
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>復元する
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if session['user']['role'] == 'root' %}
+
+<!-- ===== 設備 一括完全削除モーダル（ROOT専用） ===== -->
+<div class="modal fade" id="bulkHardDeleteEqModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>設備の一括完全削除</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="bulkHardEqForm" method="POST" action="{{ url_for('recycle_bin_equipment_bulk_hard_delete_post') }}">
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="equipment_ids" id="bulk-hard-eq-ids">
+        <div class="modal-body">
+          <div class="alert alert-danger py-2"><strong>この操作は取り消せません。</strong></div>
+          <p>選択した <strong><span id="bulk-hard-eq-count">0</span> 件</strong> の設備と関連する点検記録をすべて削除します。</p>
+          <label class="form-label fw-bold"><i class="bi bi-key-fill me-1"></i>ROOTパスワードを入力</label>
+          <input type="password" name="root_password" id="bulk-hard-eq-pw"
+                 class="form-control" required autocomplete="new-password" placeholder="パスワード">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3-fill me-1"></i>完全削除を実行
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== アカウント 一括完全削除モーダル（ROOT専用） ===== -->
+<div class="modal fade" id="bulkHardDeleteUsrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>アカウントの一括完全削除</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="bulkHardUsrForm" method="POST" action="{{ url_for('recycle_bin_user_bulk_hard_delete_post') }}">
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="user_ids" id="bulk-hard-usr-ids">
+        <div class="modal-body">
+          <div class="alert alert-danger py-2"><strong>この操作は取り消せません。</strong></div>
+          <p>選択した <strong><span id="bulk-hard-usr-count">0</span> 件</strong> のアカウントと担当していた点検記録をすべて削除します。</p>
+          <label class="form-label fw-bold"><i class="bi bi-key-fill me-1"></i>ROOTパスワードを入力</label>
+          <input type="password" name="root_password" id="bulk-hard-usr-pw"
+                 class="form-control" required autocomplete="new-password" placeholder="パスワード">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3-fill me-1"></i>完全削除を実行
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 個別完全削除モーダル（ROOT専用） -->
+<div class="modal fade" id="hardDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>完全削除の確認
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="hardDeleteForm">
+        <div class="modal-body">
+          <div class="alert alert-danger py-2">
+            <strong>この操作は取り消せません。</strong>データベースから完全に削除されます。
+          </div>
+          <p id="hardDeleteMessage" class="mb-3"></p>
+          {{ form.hidden_tag() }}
+          <label for="rootPasswordInput" class="form-label fw-bold">
+            <i class="bi bi-key-fill me-1"></i>ROOTパスワードを入力してください
+          </label>
+          <input type="password" id="rootPasswordInput" name="root_password"
+                 class="form-control" required autocomplete="new-password" placeholder="パスワード">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash3-fill me-1"></i>完全削除を実行
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+<!-- 一括完全削除中ローディングオーバーレイ（設備・アカウント共用） -->
+<div id="bulkHardDeleteOverlay" style="display:none; position:fixed; inset:0;
+     background:rgba(0,0,0,0.7); z-index:10000;
+     align-items:center; justify-content:center;">
+  <div class="text-center text-white px-4">
+    <div class="spinner-border mb-3" style="width:3rem; height:3rem;" role="status">
+      <span class="visually-hidden">処理中...</span>
+    </div>
+    <p class="mb-2 fs-5 fw-semibold">完全削除処理中です</p>
+    <p class="mb-3 small text-white-50">この操作は取り消せません。完了までお待ちください...</p>
+    <div class="progress" style="width:280px; height:8px;">
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger"
+           style="width:100%"></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var RB_PAGE_SIZE = 20;
+  var ROLE_ORDER = { 'root': 0, 'admin': 1, 'engineer': 2 };
+
+  // ===== 汎用ページネーション生成 =====
+  function makeRenderPage(tableId, pageInfoId, paginationId, resultCountId, filteredTotalId) {
+    var state = { page: 1, sortKey: null, sortAsc: true };
+
+    function getFilteredRows() {
+      return Array.from(document.querySelectorAll('#' + tableId + ' tbody tr')).filter(function (r) {
+        return !r.classList.contains('filter-hidden');
+      });
+    }
+
+    function render() {
+      var filtered   = getFilteredRows();
+      var totalCount = filtered.length;
+      var totalPages = Math.max(1, Math.ceil(totalCount / RB_PAGE_SIZE));
+      if (state.page > totalPages) state.page = totalPages;
+
+      var start = (state.page - 1) * RB_PAGE_SIZE;
+      var end   = start + RB_PAGE_SIZE;
+
+      document.querySelectorAll('#' + tableId + ' tbody tr').forEach(function (row) {
+        if (row.classList.contains('filter-hidden')) return;
+        var idx = filtered.indexOf(row);
+        row.classList.toggle('page-hidden', idx < start || idx >= end);
+      });
+
+      var pageInfoEl = document.getElementById(pageInfoId);
+      if (pageInfoEl) {
+        pageInfoEl.textContent = totalCount === 0
+          ? '0 件'
+          : '全 ' + totalCount + ' 件中 ' + (start + 1) + '〜' + Math.min(end, totalCount) + ' 件表示';
+      }
+      var countEl = document.getElementById(resultCountId);
+      if (countEl) countEl.textContent = totalCount + ' 件';
+      var filteredTotalEl = document.getElementById(filteredTotalId);
+      if (filteredTotalEl) filteredTotalEl.textContent = totalCount;
+
+      renderPagination(totalPages);
+    }
+
+    function renderPagination(totalPages) {
+      var container = document.getElementById(paginationId);
+      if (!container) return;
+      if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+      var pages = [];
+      if (totalPages <= 7) {
+        for (var i = 1; i <= totalPages; i++) pages.push(i);
+      } else {
+        pages.push(1);
+        if (state.page > 3) pages.push('...');
+        var from = Math.max(2, state.page - 1);
+        var to   = Math.min(totalPages - 1, state.page + 1);
+        for (var i = from; i <= to; i++) pages.push(i);
+        if (state.page < totalPages - 2) pages.push('...');
+        pages.push(totalPages);
+      }
+
+      var html = '<nav><ul class="pagination pagination-sm mb-0">';
+      html += '<li class="page-item' + (state.page === 1 ? ' disabled' : '') + '">';
+      html += '<a class="page-link" href="#" data-page="' + (state.page - 1) + '">&#8592;</a></li>';
+      pages.forEach(function (p) {
+        if (p === '...') {
+          html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+        } else {
+          html += '<li class="page-item' + (p === state.page ? ' active' : '') + '">';
+          html += '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a></li>';
+        }
+      });
+      html += '<li class="page-item' + (state.page === totalPages ? ' disabled' : '') + '">';
+      html += '<a class="page-link" href="#" data-page="' + (state.page + 1) + '">&#8594;</a></li>';
+      html += '</ul></nav>';
+      container.innerHTML = html;
+
+      container.querySelectorAll('[data-page]').forEach(function (link) {
+        link.addEventListener('click', function (e) {
+          e.preventDefault();
+          var page = parseInt(this.dataset.page);
+          if (page >= 1 && page <= totalPages) {
+            state.page = page;
+            render();
+          }
+        });
+      });
+    }
+
+    return { render: render, state: state };
+  }
+
+  // ===== 汎用ソート関数 =====
+  function sortTableRows(tableId, key, state) {
+    var tbody = document.querySelector('#' + tableId + ' tbody');
+    if (!tbody) return;
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+
+    if (state.sortKey === key) {
+      state.sortAsc = !state.sortAsc;
+    } else {
+      state.sortKey = key;
+      state.sortAsc = true;
+    }
+
+    rows.sort(function (a, b) {
+      var aVal = a.dataset[key] || '';
+      var bVal = b.dataset[key] || '';
+      if (key === 'role') {
+        aVal = ROLE_ORDER[aVal] !== undefined ? ROLE_ORDER[aVal] : 99;
+        bVal = ROLE_ORDER[bVal] !== undefined ? ROLE_ORDER[bVal] : 99;
+        return state.sortAsc ? aVal - bVal : bVal - aVal;
+      }
+      if (key === 'status') {
+        var STATUS_ORDER = { 'repair': 0, 'watch': 1, 'normal': 2 };
+        aVal = STATUS_ORDER[aVal] !== undefined ? STATUS_ORDER[aVal] : 99;
+        bVal = STATUS_ORDER[bVal] !== undefined ? STATUS_ORDER[bVal] : 99;
+        return state.sortAsc ? aVal - bVal : bVal - aVal;
+      }
+      var cmp = aVal.localeCompare(bVal, 'ja');
+      return state.sortAsc ? cmp : -cmp;
+    });
+
+    rows.forEach(function (r) { tbody.appendChild(r); });
+  }
+
+  // ===== 汎用チェックボックス制御 =====
+  function setupCheckboxes(checkboxClass, selectAllId, bulkBarId, selectedCountId,
+                            selectPageId, selectAllFilteredId, deselectAllId, clearBtnId,
+                            filteredTotalId, renderFn,
+                            restoreModalId, restoreIdsInputId, restoreCountId,
+                            hardDeleteModalId, hardDeleteIdsInputId, hardDeleteCountId, hardDeletePwId) {
+
+    var selectAll = document.getElementById(selectAllId);
+
+    function getChecked() {
+      return document.querySelectorAll('.' + checkboxClass + ':checked');
+    }
+
+    function getFilteredCheckboxes() {
+      return document.querySelectorAll(
+        '[id^="' + selectAllId.replace('select-all', '') + '"] tbody tr:not(.filter-hidden):not(.page-hidden) .' + checkboxClass
+      );
+    }
+
+    function updateBulkBar() {
+      var totalChecked = getChecked().length;
+      var bar = document.getElementById(bulkBarId);
+      if (bar) {
+        if (totalChecked > 0) bar.classList.remove('d-none');
+        else                  bar.classList.add('d-none');
+      }
+      var countEl = document.getElementById(selectedCountId);
+      if (countEl) countEl.textContent = totalChecked;
+
+      // 全選択チェックボックス状態更新
+      if (selectAll) {
+        var tablePrefix2 = selectAllId.replace('-select-all', '');
+        var pageBoxes   = document.querySelectorAll('#' + tablePrefix2 + 'Table tbody tr:not(.filter-hidden):not(.page-hidden) .' + checkboxClass);
+        var pageTotal   = pageBoxes.length;
+        var pageChecked = Array.from(pageBoxes).filter(function (cb) { return cb.checked; }).length;
+        selectAll.checked       = pageTotal > 0 && pageChecked === pageTotal;
+        selectAll.indeterminate = pageChecked > 0 && pageChecked < pageTotal;
+      }
+    }
+
+    if (selectAll) {
+      selectAll.addEventListener('change', function () {
+        var tablePrefix = selectAllId.replace('-select-all', '');
+        document.querySelectorAll(
+          '#' + tablePrefix + 'Table tbody tr:not(.filter-hidden):not(.page-hidden) .' + checkboxClass
+        ).forEach(function (cb) { cb.checked = selectAll.checked; });
+        updateBulkBar();
+      });
+    }
+
+    var selectPageBtn = document.getElementById(selectPageId);
+    if (selectPageBtn) {
+      selectPageBtn.addEventListener('click', function () {
+        var tablePrefix = selectAllId.replace('-select-all', '');
+        document.querySelectorAll(
+          '#' + tablePrefix + 'Table tbody tr:not(.filter-hidden):not(.page-hidden) .' + checkboxClass
+        ).forEach(function (cb) { cb.checked = true; });
+        updateBulkBar();
+      });
+    }
+
+    var selectAllFilteredBtn = document.getElementById(selectAllFilteredId);
+    if (selectAllFilteredBtn) {
+      selectAllFilteredBtn.addEventListener('click', function () {
+        var tablePrefix = selectAllId.replace('-select-all', '');
+        document.querySelectorAll(
+          '#' + tablePrefix + 'Table tbody tr:not(.filter-hidden) .' + checkboxClass
+        ).forEach(function (cb) { cb.checked = true; });
+        updateBulkBar();
+      });
+    }
+
+    var deselectAllBtn = document.getElementById(deselectAllId);
+    if (deselectAllBtn) {
+      deselectAllBtn.addEventListener('click', function () {
+        document.querySelectorAll('.' + checkboxClass).forEach(function (cb) { cb.checked = false; });
+        if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+        updateBulkBar();
+      });
+    }
+
+    var clearBtn = document.getElementById(clearBtnId);
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        document.querySelectorAll('.' + checkboxClass).forEach(function (cb) { cb.checked = false; });
+        if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+        updateBulkBar();
+      });
+    }
+
+    document.querySelectorAll('.' + checkboxClass).forEach(function (cb) {
+      cb.addEventListener('change', function () { updateBulkBar(); });
+    });
+
+    // 一括復元モーダル同期
+    var restoreModal = document.getElementById(restoreModalId);
+    if (restoreModal) {
+      restoreModal.addEventListener('show.bs.modal', function () {
+        var ids = Array.from(getChecked()).map(function (cb) { return cb.value; });
+        document.getElementById(restoreIdsInputId).value      = ids.join(',');
+        document.getElementById(restoreCountId).textContent   = ids.length;
+      });
+    }
+
+    // 一括完全削除モーダル同期
+    var hardDeleteModal = document.getElementById(hardDeleteModalId);
+    if (hardDeleteModal && hardDeleteIdsInputId) {
+      hardDeleteModal.addEventListener('show.bs.modal', function () {
+        var ids = Array.from(getChecked()).map(function (cb) { return cb.value; });
+        document.getElementById(hardDeleteIdsInputId).value    = ids.join(',');
+        document.getElementById(hardDeleteCountId).textContent = ids.length;
+        var pwEl = document.getElementById(hardDeletePwId);
+        if (pwEl) pwEl.value = '';
+      });
+    }
+
+    return { updateBulkBar: updateBulkBar };
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+
+    // ===== 設備タブ =====
+    var eqCtrl = makeRenderPage('eqTable', 'eq-page-info', 'eq-pagination', 'eq-result-count', 'eq-filtered-total');
+    var eqSortState = { sortKey: 'deletedAt', sortAsc: false };
+
+    function applyEqFilters() {
+      var name    = (document.getElementById('eq-filter-name')    || {value:''}).value.trim().toLowerCase();
+      var type    = (document.getElementById('eq-filter-type')    || {value:''}).value.trim().toLowerCase();
+      var deleter = (document.getElementById('eq-filter-deleter') || {value:''}).value.trim().toLowerCase();
+      document.querySelectorAll('#eqTable tbody tr').forEach(function (row) {
+        var nm  = !name    || (row.dataset.name    || '').toLowerCase().includes(name);
+        var tp  = !type    || (row.dataset.type    || '').toLowerCase().includes(type);
+        var dl  = !deleter || (row.dataset.deleter || '').toLowerCase().includes(deleter);
+        row.classList.toggle('filter-hidden', !(nm && tp && dl));
+        if (row.classList.contains('filter-hidden')) {
+          var cb = row.querySelector('.eq-checkbox');
+          if (cb) cb.checked = false;
+        }
+      });
+      eqCtrl.state.page = 1;
+      eqCtrl.render();
+    }
+
+    var eqDebounce;
+    ['eq-filter-name','eq-filter-type','eq-filter-deleter'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', function () {
+        clearTimeout(eqDebounce);
+        eqDebounce = setTimeout(applyEqFilters, 200);
+      });
+    });
+    var eqResetBtn = document.getElementById('eq-reset-btn');
+    if (eqResetBtn) {
+      eqResetBtn.addEventListener('click', function () {
+        ['eq-filter-name','eq-filter-type','eq-filter-deleter'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        applyEqFilters();
+      });
+    }
+
+    // 設備ソート
+    document.querySelectorAll('[data-sort-table="eq"]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var key = this.dataset.sortKey;
+        sortTableRows('eqTable', key, eqSortState);
+        // アイコン更新
+        document.querySelectorAll('[id^="eq-sort-"]').forEach(function (ic) {
+          ic.className = 'bi bi-arrow-down-up sort-icon';
+        });
+        var ic = document.getElementById('eq-sort-' + key);
+        if (ic) ic.className = (eqSortState.sortAsc ? 'bi bi-arrow-up sort-icon active' : 'bi bi-arrow-down sort-icon active');
+        eqCtrl.state.page = 1;
+        eqCtrl.render();
+      });
+    });
+
+    setupCheckboxes(
+      'eq-checkbox', 'eq-select-all', 'eq-bulk-bar', 'eq-selected-count',
+      'eq-select-page-btn', 'eq-select-all-filtered-btn', 'eq-deselect-all-btn', 'eq-clear-btn',
+      'eq-filtered-total',
+      eqCtrl.render,
+      'bulkRestoreEqModal',    'bulk-restore-eq-ids',    'bulk-restore-eq-count',
+      'bulkHardDeleteEqModal', 'bulk-hard-eq-ids',       'bulk-hard-eq-count', 'bulk-hard-eq-pw'
+    );
+
+    eqCtrl.render();
+
+    // ===== アカウントタブ =====
+    var usrCtrl = makeRenderPage('usrTable', 'usr-page-info', 'usr-pagination', 'usr-result-count', 'usr-filtered-total');
+    var usrSortState = { sortKey: 'deletedAt', sortAsc: false };
+
+    function applyUsrFilters() {
+      var name    = (document.getElementById('usr-filter-name')    || {value:''}).value.trim().toLowerCase();
+      var role    = (document.getElementById('usr-filter-role')    || {value:''}).value;
+      var deleter = (document.getElementById('usr-filter-deleter') || {value:''}).value.trim().toLowerCase();
+      document.querySelectorAll('#usrTable tbody tr').forEach(function (row) {
+        var nm  = !name    || (row.dataset.name       || '').toLowerCase().includes(name) || (row.dataset.employeeNo || '').toLowerCase().includes(name);
+        var rl  = !role    || row.dataset.role === role;
+        var dl  = !deleter || (row.dataset.deleter    || '').toLowerCase().includes(deleter);
+        row.classList.toggle('filter-hidden', !(nm && rl && dl));
+        if (row.classList.contains('filter-hidden')) {
+          var cb = row.querySelector('.usr-checkbox');
+          if (cb) cb.checked = false;
+        }
+      });
+      usrCtrl.state.page = 1;
+      usrCtrl.render();
+    }
+
+    var usrDebounce;
+    ['usr-filter-name','usr-filter-deleter'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', function () {
+        clearTimeout(usrDebounce);
+        usrDebounce = setTimeout(applyUsrFilters, 200);
+      });
+    });
+    var usrRoleEl = document.getElementById('usr-filter-role');
+    if (usrRoleEl) usrRoleEl.addEventListener('change', applyUsrFilters);
+    var usrResetBtn = document.getElementById('usr-reset-btn');
+    if (usrResetBtn) {
+      usrResetBtn.addEventListener('click', function () {
+        var nameEl    = document.getElementById('usr-filter-name');
+        var roleEl    = document.getElementById('usr-filter-role');
+        var deleterEl = document.getElementById('usr-filter-deleter');
+        if (nameEl)    nameEl.value    = '';
+        if (roleEl)    roleEl.value    = '';
+        if (deleterEl) deleterEl.value = '';
+        applyUsrFilters();
+      });
+    }
+
+    // アカウントソート
+    document.querySelectorAll('[data-sort-table="usr"]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var key = this.dataset.sortKey;
+        sortTableRows('usrTable', key, usrSortState);
+        document.querySelectorAll('[id^="usr-sort-"]').forEach(function (ic) {
+          ic.className = 'bi bi-arrow-down-up sort-icon';
+        });
+        var ic = document.getElementById('usr-sort-' + key);
+        if (ic) ic.className = (usrSortState.sortAsc ? 'bi bi-arrow-up sort-icon active' : 'bi bi-arrow-down sort-icon active');
+        usrCtrl.state.page = 1;
+        usrCtrl.render();
+      });
+    });
+
+    setupCheckboxes(
+      'usr-checkbox', 'usr-select-all', 'usr-bulk-bar', 'usr-selected-count',
+      'usr-select-page-btn', 'usr-select-all-filtered-btn', 'usr-deselect-all-btn', 'usr-clear-btn',
+      'usr-filtered-total',
+      usrCtrl.render,
+      'bulkRestoreUsrModal',    'bulk-restore-usr-ids',    'bulk-restore-usr-count',
+      'bulkHardDeleteUsrModal', 'bulk-hard-usr-ids',       'bulk-hard-usr-count', 'bulk-hard-usr-pw'
+    );
+
+    usrCtrl.render();
+
+    // ===== 点検記録タブ =====
+    var irCtrl = makeRenderPage('irTable', 'ir-page-info', 'ir-pagination', 'ir-result-count', 'ir-filtered-total');
+    var irSortState = { sortKey: 'deletedAt', sortAsc: false };
+
+    function applyIrFilters() {
+      var name   = (document.getElementById('ir-filter-name')   || {value:''}).value.trim().toLowerCase();
+      var status = (document.getElementById('ir-filter-status') || {value:''}).value;
+      document.querySelectorAll('#irTable tbody tr').forEach(function (row) {
+        var nm = !name   || (row.dataset.equipName || '').toLowerCase().includes(name);
+        var st = !status || row.dataset.status === status;
+        row.classList.toggle('filter-hidden', !(nm && st));
+      });
+      irCtrl.state.page = 1;
+      irCtrl.render();
+    }
+
+    var irDebounce;
+    var irNameEl = document.getElementById('ir-filter-name');
+    if (irNameEl) irNameEl.addEventListener('input', function () {
+      clearTimeout(irDebounce);
+      irDebounce = setTimeout(applyIrFilters, 200);
+    });
+    var irStatusEl = document.getElementById('ir-filter-status');
+    if (irStatusEl) irStatusEl.addEventListener('change', applyIrFilters);
+    var irResetBtn = document.getElementById('ir-reset-btn');
+    if (irResetBtn) {
+      irResetBtn.addEventListener('click', function () {
+        if (irNameEl)   irNameEl.value   = '';
+        if (irStatusEl) irStatusEl.value = '';
+        applyIrFilters();
+      });
+    }
+
+    // 点検記録ソート
+    document.querySelectorAll('[data-sort-table="ir"]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var key = this.dataset.sortKey;
+        sortTableRows('irTable', key, irSortState);
+        document.querySelectorAll('[id^="ir-sort-"]').forEach(function (ic) {
+          ic.className = 'bi bi-arrow-down-up sort-icon';
+        });
+        var ic = document.getElementById('ir-sort-' + key);
+        if (ic) ic.className = (irSortState.sortAsc ? 'bi bi-arrow-up sort-icon active' : 'bi bi-arrow-down sort-icon active');
+        irCtrl.state.page = 1;
+        irCtrl.render();
+      });
+    });
+
+    irCtrl.render();
+
+    // ===== 個別完全削除モーダルの制御 =====
+    var hardDeleteModal = document.getElementById('hardDeleteModal');
+    if (hardDeleteModal) {
+      hardDeleteModal.addEventListener('show.bs.modal', function (event) {
+        var btn      = event.relatedTarget;
+        var itemId   = btn.dataset.itemId;
+        var itemName = btn.dataset.itemName;
+        var itemType = btn.dataset.itemType;
+        var msg = itemType === 'equipment'
+          ? '設備「' + itemName + '」と関連する点検記録をすべて削除します。'
+          : 'アカウント「' + itemName + '」と担当していた点検記録をすべて削除します。';
+        document.getElementById('hardDeleteMessage').textContent = msg;
+        var baseUrl = itemType === 'equipment'
+          ? '/recycle-bin/equipment/' + itemId + '/hard-delete'
+          : '/recycle-bin/user/'      + itemId + '/hard-delete';
+        document.getElementById('hardDeleteForm').action = baseUrl;
+        document.getElementById('rootPasswordInput').value = '';
+      });
+    }
+
+    // ===== 一括完全削除フォーム送信時にローディングオーバーレイを表示する =====
+    var bulkHardEqForm  = document.getElementById('bulkHardEqForm');
+    var bulkHardUsrForm = document.getElementById('bulkHardUsrForm');
+    if (bulkHardEqForm)  bulkHardEqForm.addEventListener('submit',  function () { document.getElementById('bulkHardDeleteOverlay').style.display = 'flex'; });
+    if (bulkHardUsrForm) bulkHardUsrForm.addEventListener('submit', function () { document.getElementById('bulkHardDeleteOverlay').style.display = 'flex'; });
+
+    // 一括復元モーダルを開くたびにチェックボックスをリセットする
+    document.getElementById('bulkRestoreUsrModal').addEventListener('show.bs.modal', function () {
+      document.getElementById('bulkRestoreUsrEquipmentCheck').checked = true;
+      document.getElementById('bulk-restore-usr-equipment').value = '1';
+    });
+
+  });
+
+  // アカウント単体復元モーダルを開く
+  function openUsrRestoreModal(btn) {
+    var userId   = btn.getAttribute('data-user-id');
+    var userName = btn.getAttribute('data-user-name');
+    document.getElementById('usrRestoreForm').action = '/recycle-bin/user/' + userId + '/restore';
+    document.getElementById('usrRestoreMessage').textContent = 'アカウント「' + userName + '」を復元しますか？';
+    new bootstrap.Modal(document.getElementById('usrRestoreModal')).show();
+  }
+</script>
+{% endblock %}

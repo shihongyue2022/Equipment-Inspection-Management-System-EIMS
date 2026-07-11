@@ -1,68 +1,96 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ログイン - 設備点検管理システム</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler/css/tabler.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler-icons/tabler-icons.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- カスタムCSS -->
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
-<body class="d-flex flex-column login-page">
-  <div class="page page-center">
-    <div class="container container-tight py-4">
-      <div class="text-center mb-4">
-        <div class="login-brand-mark mx-auto mb-3"><i class="bi bi-tools"></i></div>
-        <h1 class="h2 mb-1">設備点検管理システム</h1>
-        <p class="text-secondary mb-0">青空設備サービス株式会社（架空）</p>
-      </div>
+<body class="bg-light">
 
-      <div class="card card-md login-card">
-        <div class="card-body">
-          <h2 class="h3 text-center mb-4">アカウントにログイン</h2>
+  <!-- ログイン画面：画面中央にカードを表示 -->
+  <div class="container pt-0">
+    <div class="row justify-content-center mt-0">
+      <div class="col-md-5">
 
-          {% if error_message %}
-          <div class="alert alert-danger" role="alert">
-            <div class="d-flex"><i class="bi bi-exclamation-circle alert-icon"></i><div>{{ error_message }}</div></div>
-          </div>
-          {% endif %}
-
-          {% if info_message %}
-          <div class="alert alert-info" role="alert">
-            <div class="d-flex"><i class="bi bi-info-circle alert-icon"></i><div>{{ info_message }}</div></div>
-          </div>
-          {% endif %}
-
-          <form method="post" action="{{ url_for('auth.login_post') }}" autocomplete="off"{% if open_in_top %} target="_top"{% endif %}>
-            {{ form.hidden_tag() if form else '' }}
-            <div class="mb-3">
-              <label for="employee_no" class="form-label">社員番号</label>
-              <div class="input-icon">
-                <span class="input-icon-addon"><i class="bi bi-person-circle"></i></span>
-                <input type="text" class="form-control" id="employee_no" name="employee_no"
-                       placeholder="例: TEC-201" autocomplete="username" required autofocus>
-              </div>
-            </div>
-            <div class="mb-4">
-              <label for="password" class="form-label">パスワード</label>
-              <div class="input-icon">
-                <span class="input-icon-addon"><i class="bi bi-key"></i></span>
-                <input type="password" class="form-control" id="password" name="password"
-                       placeholder="パスワードを入力" autocomplete="current-password" required>
-              </div>
-            </div>
-            <div class="form-footer">
-              <button type="submit" class="btn btn-primary w-100">
-                <i class="bi bi-box-arrow-in-right me-1"></i>ログイン
-              </button>
-            </div>
-          </form>
+        <!-- タイトル -->
+        <div class="text-center mb-4">
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="E_T.ECH ロゴ" style="width: 160px; mix-blend-mode: multiply;">
+          <h2 class="mt-2 fw-bold">設備点検管理システム</h2>
+          <p class="text-muted">AKK空調設備株式会社</p>
         </div>
+
+        <!-- ログインカード -->
+        <div class="card shadow-sm">
+          <div class="card-body p-4">
+            <h5 class="card-title mb-4">ログイン</h5>
+
+            <!-- エラーメッセージ -->
+            {% if error_message %}
+            <div class="alert alert-danger" role="alert">
+              <i class="bi bi-exclamation-circle me-1"></i>{{ error_message }}
+            </div>
+            {% endif %}
+
+            <!-- 案内メッセージ -->
+            {% if info_message %}
+            <div class="alert alert-info small" role="alert">
+              <i class="bi bi-info-circle me-1"></i>{{ info_message }}
+            </div>
+            {% endif %}
+
+            <!-- ログインフォーム -->
+            <form method="POST" action="{{ url_for('login_post') }}">
+              <!-- CSRF対策トークン -->
+              {{ form.hidden_tag() if form else '' }}
+
+              <!-- 社員番号 -->
+              <div class="mb-3">
+                <label for="employee_no" class="form-label">社員番号</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="employee_no"
+                  name="employee_no"
+                  placeholder="例: ENG-021"
+                  required
+                  autofocus
+                >
+              </div>
+
+              <!-- パスワード -->
+              <div class="mb-4">
+                <label for="password" class="form-label">パスワード</label>
+                <input
+                  type="password"
+                  class="form-control"
+                  id="password"
+                  name="password"
+                  placeholder="パスワードを入力"
+                  required
+                >
+              </div>
+
+              <!-- ログインボタン -->
+              <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg">
+                  <i class="bi bi-box-arrow-in-right me-1"></i>ログイン
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
       </div>
-      <div class="text-center text-secondary mt-3 small">認証情報は管理者から発行されたものを使用してください。</div>
     </div>
   </div>
-  <script src="{{ url_for('static', filename='vendor/tabler/js/tabler.min.js') }}"></script>
+
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

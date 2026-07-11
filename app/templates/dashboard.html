@@ -3,249 +3,576 @@
 {% block title %}ダッシュボード - 設備点検管理システム{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0">
-    <i class="bi bi-speedometer2 me-2 text-primary"></i>ダッシュボード
-  </h2>
+<style>
+  /* 集計カード共通スタイル */
+  .stat-card {
+    transition: transform 0.15s, box-shadow 0.15s;
+    max-width: 230px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12) !important;
+  }
+
+  .stat-card.stat-active {
+    outline: 2px solid;
+    outline-offset: -4px;
+    position: relative;
+  }
+
+  /* ホバー時のみヘッダーより前面に出て、ポップアップした枠が隠れないようにする */
+  .stat-card.stat-active:hover {
+    z-index: 1051;
+  }
+
+  .stat-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stat-icon i {
+    font-size: 1.25rem !important;
+  }
+
+  .stat-number {
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  /* カード用カラー（Bootstrapにない色） */
+  .c-blue {
+    color: #4F46E5;
+  }
+
+  .bg-blue-soft {
+    background: rgba(79, 70, 229, 0.1);
+  }
+
+  .c-orange {
+    color: #EA7001;
+  }
+
+  .bg-orange-soft {
+    background: rgba(249, 115, 22, 0.1);
+  }
+
+  .c-red {
+    color: #DC2626;
+  }
+
+  .bg-red-soft {
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .c-yellow {
+    color: #B45309;
+  }
+
+  .bg-yellow-soft {
+    background: rgba(234, 179, 8, 0.1);
+  }
+
+  .c-purple {
+    color: #6D28D9;
+  }
+
+  .bg-purple-soft {
+    background: rgba(139, 92, 246, 0.1);
+  }
+
+  /* ページネーションで非表示になった行 */
+  .page-hidden { display: none; }
+
+  /* ソート可能カラムのヘッダースタイル */
+  .sortable-th {
+    user-select: none;
+  }
+
+  .sortable-th:hover {
+    background: rgba(0, 0, 0, 0.05) !important;
+  }
+
+  /* ダッシュボードタイトルバーを画面上部に固定する */
+  .dashboard-title-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1050;
+    background: #f8f9fa;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    /* main の px-4（1.5rem）を打ち消してコンテンツ列の全幅に広げる */
+    margin-left: -1.5rem;
+    margin-right: -1.5rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  /* カードヘッダーを固定する */
+  #tableCardHeader {
+    position: sticky;
+    z-index: 1040;
+    background: white !important;
+    /* border-bottom はレイアウト高さに加算されるため、
+       JS の top 計算値と1pxずれて隙間が生じる。
+       box-shadow に変えることで高さに影響させず区切り線を引く。 */
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  /* テーブル列ヘッダーを上部に固定する */
+  .fixed-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f8f9fa;
+  }
+
+  /* テーブルの列幅を固定する */
+  .fixed-table {
+    table-layout: fixed;
+    min-width: 860px;
+  }
+
+  /* table-responsive の overflow-x:auto は scroll container を作るため
+     thead の sticky が page scroll に対して効かなくなる。
+     clip に上書きすることで scroll container を作らずに横はみ出しだけ抑制する。 */
+  #tableWrapper {
+    overflow-x: clip;
+  }
+
+</style>
+
+<div class="dashboard-title-bar">
+  <div class="d-flex justify-content-between align-items-center">
+    {% if session['user']['role'] in ['root', 'admin'] and bases %}
+    <form method="GET" action="{{ url_for('dashboard_get') }}" class="d-flex align-items-center gap-2">
+      {% if keyword %}<input type="hidden" name="keyword" value="{{ keyword }}">{% endif %}
+      {% if status_filter %}<input type="hidden" name="status_filter" value="{{ status_filter }}">{% endif %}
+      <label class="form-label mb-0 small text-muted text-nowrap">拠点</label>
+      <select name="base" class="form-select form-select-sm" style="min-width: 120px;" onchange="this.form.submit()">
+        <option value="">全拠点</option>
+        {% for base in bases %}
+        <option value="{{ base }}" {% if base==selected_base %}selected{% endif %}>{{ base }}</option>
+        {% endfor %}
+      </select>
+      {% if selected_base %}
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="removeFilter('base')" title="拠点フィルタをクリア">
+        <i class="bi bi-x"></i>
+      </button>
+      {% endif %}
+    </form>
+    {% else %}
+    <div></div>
+    {% endif %}
+    <div class="d-flex align-items-center gap-3">
+      <div class="fw-semibold text-dark small" id="currentDateTime">{{ current_date_time }}</div>
+      <div class="small text-muted" id="weatherInfo" data-location="{{ weather_location }}"></div>
+      {% if session.get('user') %}
+      <!-- 通知ベルボタン（時間表示の横） -->
+      <button id="notificationBell"
+              class="btn btn-sm border-0 position-relative p-1 text-secondary"
+              onclick="toggleNotificationPanel()"
+              title="お知らせ">
+        <i class="bi bi-bell fs-5"></i>
+        <!-- 緊急件数バッジ（0件のときは非表示） -->
+        <span id="notificationBadge"
+              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none"
+              style="font-size: 0.62rem; min-width: 18px; padding: 3px 5px;">
+          0
+        </span>
+      </button>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
-<!-- 集計カード（4枚：総設備数・点検超過・まもなく期限・要修理） -->
-<div class="row g-3 mb-4">
+<!-- 集計カード（5枚：横並び） -->
+<div class="row g-3 mb-4 mt-0">
 
-  <!-- 総設備数 -->
-  <div class="col-md-3 col-sm-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="display-6 fw-bold text-primary">{{ total_count }}</div>
-        <div class="text-muted mt-1">
-          <i class="bi bi-tools me-1"></i>総設備数
+  <!-- 全設備数 -->
+  <div class="col-6 col-sm-4 col-xl">
+    <a href="{{ url_for('dashboard_get') }}{% if selected_base %}?base={{ selected_base }}{% endif %}#tableCard"
+      class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100 stat-card {% if not status_filter %}stat-active c-blue{% endif %}">
+        <div class="card-body text-center py-3">
+          <div class="text-muted mt-1 small">全設備数</div>
+          <div class="d-flex align-items-center justify-content-center mt-2 mb-3">
+            <div class="stat-icon bg-blue-soft c-blue">
+              <i class="bi bi-layers-fill fs-4"></i>
+            </div>
+            <div class="stat-number c-blue ms-2">{{ total_count }}</div>
+          </div>
         </div>
       </div>
-    </div>
+    </a>
   </div>
 
-  <!-- 点検超過件数 -->
-  <div class="col-md-3 col-sm-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="display-6 fw-bold text-danger">{{ overdue_count }}</div>
-        <div class="text-muted mt-1">
-          <i class="bi bi-exclamation-triangle me-1 text-danger"></i>点検超過
+  <!-- 担当未登録数（管理者のみ表示） -->
+  {% if session['user']['role'] in ['root', 'admin'] %}
+  <div class="col-6 col-sm-4 col-xl">
+    <a href="{{ url_for('dashboard_get') }}?{% if selected_base %}base={{ selected_base }}&{% endif %}status_filter=unassigned#tableCard"
+      class="text-decoration-none">
+      <div
+        class="card border-0 shadow-sm h-100 stat-card {% if status_filter == 'unassigned' %}stat-active c-orange{% endif %}">
+        <div class="card-body text-center py-3">
+          <div class="text-muted mt-1 small">担当未登録数</div>
+          <div class="d-flex align-items-center justify-content-center mt-2 mb-1">
+            <div class="stat-icon bg-orange-soft c-orange">
+              <i class="bi bi-person-dash-fill fs-4"></i>
+            </div>
+            <div class="stat-number c-orange ms-2">{{ unassigned_count }}</div>
+          </div>
+          <div class="text-center mb-2" style="min-height: 1.4rem;">
+            {% if unassigned_diff > 0 %}
+            <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">先週比 +{{ unassigned_diff }}</span>
+            {% elif unassigned_diff < 0 %}
+            <span class="badge bg-success" style="font-size: 0.65rem;">先週比 {{ unassigned_diff }}</span>
+            {% endif %}
+          </div>
         </div>
       </div>
-    </div>
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- 点検期限超過 -->
+  <div class="col-6 col-sm-4 col-xl">
+    <a href="{{ url_for('dashboard_get') }}?{% if selected_base %}base={{ selected_base }}&{% endif %}status_filter=overdue#tableCard"
+      class="text-decoration-none">
+      <div
+        class="card border-0 shadow-sm h-100 stat-card {% if status_filter == 'overdue' %}stat-active c-red{% endif %}">
+        <div class="card-body text-center py-3">
+          <div class="text-muted mt-1 small">点検期限超過</div>
+          <div class="d-flex align-items-center justify-content-center mt-2 mb-1">
+            <div class="stat-icon bg-red-soft c-red">
+              <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+            </div>
+            <div class="stat-number c-red ms-2">{{ overdue_count }}</div>
+          </div>
+          <div class="text-center mb-2" style="min-height: 1.4rem;">
+            {% if overdue_diff > 0 %}
+            <span class="badge bg-danger" style="font-size: 0.65rem;">先週比 +{{ overdue_diff }}</span>
+            {% elif overdue_diff < 0 %} <span class="badge bg-success" style="font-size: 0.65rem;">先週比 {{ overdue_diff
+              }}</span>
+              {% endif %}
+          </div>
+        </div>
+      </div>
+    </a>
   </div>
 
-  <!-- まもなく期限 -->
-  <div class="col-md-3 col-sm-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="display-6 fw-bold text-warning">{{ soon_count }}</div>
-        <div class="text-muted mt-1">
-          <i class="bi bi-clock-history me-1 text-warning"></i>まもなく期限
+  <!-- 点検期限間近 -->
+  <div class="col-6 col-sm-4 col-xl">
+    <a href="{{ url_for('dashboard_get') }}?{% if selected_base %}base={{ selected_base }}&{% endif %}status_filter=soon#tableCard"
+      class="text-decoration-none">
+      <div
+        class="card border-0 shadow-sm h-100 stat-card {% if status_filter == 'soon' %}stat-active c-yellow{% endif %}">
+        <div class="card-body text-center py-3">
+          <div class="text-muted mt-1 small">点検期限間近</div>
+          <div class="d-flex align-items-center justify-content-center mt-2 mb-1">
+            <div class="stat-icon bg-yellow-soft c-yellow">
+              <i class="bi bi-clock-fill fs-4"></i>
+            </div>
+            <div class="stat-number c-yellow ms-2">{{ soon_count }}</div>
+          </div>
+          <div class="text-center mb-2" style="min-height: 1.4rem;">
+            {% if session['user']['role'] in ['root', 'admin'] %}
+            {% if soon_diff > 0 %}
+            <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">先週比 +{{ soon_diff }}</span>
+            {% elif soon_diff < 0 %}
+            <span class="badge bg-success" style="font-size: 0.65rem;">先週比 {{ soon_diff }}</span>
+            {% endif %}
+            {% endif %}
+          </div>
         </div>
       </div>
-    </div>
+    </a>
   </div>
 
-  <!-- 要修理件数（最新点検ステータスが repair の設備数） -->
-  <div class="col-md-3 col-sm-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="display-6 fw-bold text-danger">{{ repair_count }}</div>
-        <div class="text-muted mt-1">
-          <i class="bi bi-wrench-adjustable me-1 text-danger"></i>要修理
+  <!-- 要修理数 -->
+  <div class="col-6 col-sm-4 col-xl">
+    <a href="{{ url_for('dashboard_get') }}?{% if selected_base %}base={{ selected_base }}&{% endif %}status_filter=repair#tableCard"
+      class="text-decoration-none">
+      <div
+        class="card border-0 shadow-sm h-100 stat-card {% if status_filter == 'repair' %}stat-active c-purple{% endif %}">
+        <div class="card-body text-center py-3">
+          <div class="text-muted mt-1 small">要修理数</div>
+          <div class="d-flex align-items-center justify-content-center mt-2 mb-1">
+            <div class="stat-icon bg-purple-soft c-purple">
+              <i class="bi bi-wrench-adjustable-circle-fill fs-4"></i>
+            </div>
+            <div class="stat-number c-purple ms-2">{{ repair_count }}</div>
+          </div>
+          <div class="text-center mb-2" style="min-height: 1.4rem;"></div>
         </div>
       </div>
-    </div>
+    </a>
   </div>
 
 </div>
 
-<!-- グループ別集計 -->
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-white py-3">
-    <div class="dashboard-control-header">
-      <h5 class="mb-0">
-        <i class="bi bi-bar-chart me-1"></i>グループ別集計
-        {% if active_filter_count %}
-        <span class="badge bg-primary-lt text-primary ms-1">{{ active_filter_count }} 条件</span>
-        {% endif %}
+
+{% if session['user']['role'] in ['root', 'admin'] %}
+<!-- 分析セクション（管理者のみ） -->
+<div id="analysisSection">
+
+  <!-- 拠点別異常グラフ ＋ 担当者別負荷テーブル -->
+  <div class="row g-3 mb-4">
+
+    <!-- 拠点別異常件数（全拠点表示時）または 月別点検スケジュール（拠点選択時） -->
+    <div class="col-xl-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white py-3">
+          {% if selected_base %}
+          <h5 class="mb-0"><i class="bi bi-calendar3 me-1 text-primary"></i>次回点検スケジュール（{{ selected_base }}・直近8週）</h5>
+          {% else %}
+          <h5 class="mb-0"><i class="bi bi-bar-chart-fill me-1 text-primary"></i>エリア別異常件数</h5>
+          {% endif %}
+        </div>
+        <div class="card-body" style="position: relative; height: 260px;">
+          {% if selected_base %}
+          <canvas id="monthlyScheduleChart"></canvas>
+          {% else %}
+          <canvas id="locationChart"></canvas>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 担当者別負荷テーブル -->
+    <div class="col-xl-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header bg-white py-3">
+          <h5 class="mb-0"><i class="bi bi-person-lines-fill me-1 text-primary"></i>担当者別負荷</h5>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-hover mb-0 align-middle" style="table-layout: fixed;">
+              <colgroup>
+                {% if selected_base %}
+                <col style="width: 25%">
+                <col style="width: 25%">
+                <col style="width: 25%">
+                <col style="width: 25%">
+                {% else %}
+                <col style="width: 35%">
+                <col style="width: 22%">
+                <col style="width: 13%">
+                <col style="width: 15%">
+                <col style="width: 15%">
+                {% endif %}
+              </colgroup>
+              <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+                <tr>
+                  <th>担当者</th>
+                  {% if not selected_base %}<th class="text-nowrap">担当拠点</th>{% endif %}
+                  <th class="text-center text-nowrap">担当数</th>
+                  <th class="text-center text-nowrap">期限超過</th>
+                  <th class="text-center text-nowrap">要修理</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in engineer_stats %}
+                <tr>
+                  <td class="{% if s.engineer_name == '担当未登録' %}text-warning fw-semibold{% endif %}">
+                    {% if s.engineer_id %}
+                    <a href="{{ url_for('account_detail_get', id=s.engineer_id) }}?back=dashboard" class="text-decoration-none fw-semibold">
+                      {{ s.engineer_name }}
+                    </a>
+                    {% else %}
+                    {{ s.engineer_name }}
+                    {% endif %}
+                  </td>
+                  {% if not selected_base %}<td class="text-muted text-nowrap">{{ s.base_name }}</td>{% endif %}
+                  <td class="text-center">{{ s.total }}</td>
+                  <td class="text-center {% if s.overdue > 0 %}text-danger fw-semibold{% endif %}">
+                    {{ s.overdue }}
+                  </td>
+                  <td class="text-center {% if s.repair > 0 %}c-purple fw-semibold{% endif %}">
+                    {{ s.repair }}
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="4" class="text-center text-muted py-3">データがありません</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 緊急対応リスト（トグル開閉） -->
+  {% if urgent_list %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3" style="cursor: pointer;" data-bs-toggle="collapse"
+      data-bs-target="#urgentListBody" aria-expanded="false" aria-controls="urgentListBody">
+      <h5 class="mb-0 text-danger d-flex justify-content-between align-items-center">
+        <span>
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>緊急対応リスト
+          <span class="text-muted fw-normal fs-6 ms-2">（{{ urgent_list|length }} 件）</span>
+        </span>
+        <i class="bi bi-chevron-down text-muted" id="urgentToggleIcon"
+          style="font-size: 0.9rem; transition: transform 0.2s;"></i>
       </h5>
-      <form method="get" action="{{ url_for('dashboard.index') }}"
-            class="dashboard-control-form">
-        <div class="dashboard-control-row">
-          <span class="dashboard-control-label">絞り込み</span>
-        {% if session['user']['role'] in ['root', 'admin'] %}
-        <label for="baseFilter" class="visually-hidden">拠点</label>
-        <select id="baseFilter" name="base" class="form-select form-select-sm dashboard-filter-select"
-                onchange="this.form.submit()">
-          <option value="">全拠点</option>
-          {% for option in filter_options.bases %}
-          <option value="{{ option.value }}" {% if selected_base == option.value %}selected{% endif %}>
-            {{ option.value }}（{{ option.count }}）
-          </option>
-          {% endfor %}
-        </select>
-        {% endif %}
-
-        <label for="equipmentTypeFilter" class="visually-hidden">設備種別</label>
-        <select id="equipmentTypeFilter" name="equipment_type" class="form-select form-select-sm dashboard-filter-select"
-                onchange="this.form.submit()">
-          <option value="">全設備種別</option>
-          {% for option in filter_options.equipment_types %}
-          <option value="{{ option.value }}" {% if selected_type == option.value %}selected{% endif %}>
-            {{ option.value }}（{{ option.count }}）
-          </option>
-          {% endfor %}
-        </select>
-
-        <label for="manufacturerFilter" class="visually-hidden">メーカー</label>
-        <select id="manufacturerFilter" name="manufacturer" class="form-select form-select-sm dashboard-filter-select"
-                onchange="this.form.submit()">
-          <option value="">全メーカー</option>
-          {% for option in filter_options.manufacturers %}
-          <option value="{{ option.value }}" {% if selected_manufacturer == option.value %}selected{% endif %}>
-            {{ option.value }}（{{ option.count }}）
-          </option>
-          {% endfor %}
-        </select>
-
-        {% if session['user']['role'] in ['root', 'admin'] %}
-        <label for="engineerFilter" class="visually-hidden">担当者</label>
-        <select id="engineerFilter" name="engineer_id" class="form-select form-select-sm dashboard-filter-select"
-                onchange="this.form.submit()">
-          <option value="">全担当者</option>
-          {% for engineer in filter_options.engineers %}
-          <option value="{{ engineer.id }}" {% if selected_engineer == engineer.id %}selected{% endif %}>
-            {{ engineer.name }}（{{ engineer.count }}）
-          </option>
-          {% endfor %}
-        </select>
-        {% endif %}
-        {% if active_filter_count %}
-        <a href="{{ url_for('dashboard.index', group_by=selected_group, sort_by=selected_sort, sort_order=selected_order) }}"
-           class="btn btn-sm btn-ghost-secondary">条件をクリア</a>
-        {% endif %}
-        </div>
-
-        <div class="dashboard-control-row">
-        <span class="dashboard-control-label">集計設定</span>
-        <label for="groupBy" class="visually-hidden">集計軸</label>
-        <select id="groupBy" name="group_by" class="form-select form-select-sm dashboard-setting-select"
-                onchange="this.form.submit()">
-          {% for value, label in group_options.items() %}
-          <option value="{{ value }}" {% if selected_group == value %}selected{% endif %}
-                  {% if value in fixed_dimensions %}disabled{% endif %}>{{ label }}別</option>
-          {% endfor %}
-        </select>
-        <label for="sortBy" class="visually-hidden">並び替え</label>
-        <select id="sortBy" name="sort_by" class="form-select form-select-sm dashboard-setting-select"
-                onchange="this.form.submit()">
-          {% for value, label in sort_options.items() %}
-          <option value="{{ value }}" {% if selected_sort == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-        <select id="sortOrder" name="sort_order" class="form-select form-select-sm dashboard-setting-select"
-                aria-label="並び順" onchange="this.form.submit()">
-          {% for value, label in sort_orders.items() %}
-          <option value="{{ value }}" {% if selected_order == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-        </div>
-      </form>
     </div>
+    <div class="collapse" id="urgentListBody">
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+          <table class="table table-sm table-hover mb-0 align-middle" id="urgentTable">
+            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th>設備名</th>
+                <th>設置場所</th>
+                <th class="text-nowrap">担当者</th>
+                <th class="text-nowrap">期限状態</th>
+                <th class="text-nowrap sortable-th" style="cursor: pointer;" onclick="sortUrgentTable(4, 'date')"
+                  title="クリックでソート">
+                  次回点検日
+                  <i class="bi bi-arrow-down-up ms-1" data-urgent-sort-icon-col="4" style="font-size: 0.75rem;"></i>
+                </th>
+                <th class="text-nowrap sortable-th" style="cursor: pointer;" onclick="sortUrgentTable(5, 'status')"
+                  title="クリックでソート">
+                  最新点検
+                  <i class="bi bi-arrow-down-up ms-1" data-urgent-sort-icon-col="5" style="font-size: 0.75rem;"></i>
+                </th>
+                <th class="text-center text-nowrap">点検登録</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for eq in urgent_list %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('equipment_detail_get', id=eq.id) }}?back=dashboard" class="text-decoration-none fw-semibold">
+                    {{ eq.name }}
+                  </a>
+                </td>
+                <td>{{ eq.location }}</td>
+                <td class="text-nowrap">
+                  {% if eq.assigned_user_name %}
+                  {{ eq.assigned_user_name }}
+                  {% else %}
+                  <span class="badge bg-warning text-dark">未登録</span>
+                  {% endif %}
+                </td>
+                <td class="text-nowrap">
+                  {% if eq.deadline_status == 'overdue' %}
+                  <span class="badge bg-danger">超過</span>
+                  {% elif eq.deadline_status == 'soon' %}
+                  <span class="badge bg-warning text-dark">間近</span>
+                  {% else %}
+                  <span class="badge bg-success">正常</span>
+                  {% endif %}
+                </td>
+                <td class="text-nowrap {% if eq.deadline_status == 'overdue' %}text-danger fw-semibold{% endif %}">
+                  {{ eq.next_inspection_date or '─' }}
+                </td>
+                <td class="text-nowrap">
+                  {% if eq.latest_inspection_status == 'repair' %}
+                  <span class="badge bg-danger">要修理</span>
+                  {% elif eq.latest_inspection_status == 'watch' %}
+                  <span class="badge bg-warning text-dark">要観察</span>
+                  {% elif eq.latest_inspection_status == 'normal' %}
+                  <span class="badge bg-success">正常</span>
+                  {% else %}
+                  <span class="text-muted">─</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  <a href="{{ url_for('inspection_new_get') }}?equipment_id={{ eq.id }}"
+                    class="btn btn-sm btn-outline-danger">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /.collapse -->
   </div>
-  <div class="group-chart-head" aria-hidden="true">
-    <span>{{ group_options[selected_group] }}</span>
-    <span>最新点検ステータス構成</span>
-    <span></span>
-  </div>
-  {% if grouped_summary %}
-  <div class="group-chart-list">
-    {% for row in grouped_summary[:12] %}
-      {% include "partials/group_chart_row.html" %}
-    {% endfor %}
-  </div>
-  {% if grouped_summary|length > 12 %}
-  <details class="group-chart-more">
-    <summary>残り {{ grouped_summary|length - 12 }} グループを表示</summary>
-    <div class="group-chart-list">
-      {% for row in grouped_summary[12:] %}
-        {% include "partials/group_chart_row.html" %}
-      {% endfor %}
-    </div>
-  </details>
   {% endif %}
-  {% else %}
-  <div class="text-center text-muted py-4">集計対象の設備がありません。</div>
-  {% endif %}
-</div>
+
+</div><!-- /#analysisSection -->
+{% endif %}
 
 <!-- 設備一覧テーブル -->
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-white py-3">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <h5 class="mb-0">
-        {% if session['user']['role'] in ['root', 'admin'] %}
-        <i class="bi bi-list-ul me-1"></i>全設備一覧
-        {% else %}
-        <i class="bi bi-list-ul me-1"></i>担当設備一覧
-        {% endif %}
-      </h5>
 
-      <span class="text-muted small">
-        全 {{ pagination.total }} 件・{{ pagination.page }} / {{ pagination.pages or 1 }} ページ
-      </span>
-    </div>
+<div class="card border-0 shadow-sm" id="tableCard">
+  <div class="card-header bg-white py-3 d-flex align-items-center" id="tableCardHeader">
+    <h5 class="mb-0 flex-grow-1">
+      {% if session['user']['role'] in ['root', 'admin'] %}
+      <i class="bi bi-list-ul me-1"></i>全設備一覧
+      {% else %}
+      <i class="bi bi-list-ul me-1"></i>担当設備一覧
+      {% endif %}
+      <span class="text-muted fw-normal fs-6 ms-2">（全 {{ equipment_list|length }} 件）</span>
+    </h5>
   </div>
 
   <div class="card-body p-0">
     {% if equipment_list %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
+    <div class="table-responsive" id="tableWrapper">
+      <table class="table table-hover mb-0 align-middle fixed-table" id="dashTable">
         <thead class="table-light">
           <tr>
-            <th>設備名</th>
-            <th>設置場所</th>
-            <th>担当者</th>
-            <th>次回点検日</th>
-            <th>期限</th>
-            <th>最新点検</th>
-            <th class="text-center">操作</th>
+            <th style="width: 26%;">設備名 / 設置場所</th>
+            <th class="text-nowrap" style="width: 12%;">設備種別</th>
+            <th style="width: 10%;">エリア</th>
+            <th class="text-nowrap" style="width: 12%;">担当者</th>
+            <th class="text-nowrap" style="width: 8%;">状態</th>
+            <th class="text-nowrap sortable-th" style="width: 14%; cursor: pointer;" onclick="sortTable(5, 'date')"
+              title="クリックでソート">
+              次回点検日
+              <i class="bi bi-arrow-down-up ms-1" data-sort-icon-col="5" style="font-size: 0.75rem;"></i>
+            </th>
+            <th class="text-nowrap sortable-th" style="width: 10%; cursor: pointer;" onclick="sortTable(6, 'status')"
+              title="クリックでソート">
+              最新点検
+              <i class="bi bi-arrow-down-up ms-1" data-sort-icon-col="6" style="font-size: 0.75rem;"></i>
+            </th>
+            <th class="text-center text-nowrap" style="width: 8%;">点検登録</th>
           </tr>
         </thead>
         <tbody>
           {% for eq in equipment_list %}
           <tr>
-            <!-- 設備名（クリックで詳細へ） -->
+            <!-- 設備名 + 設置場所（上下に配置） -->
             <td>
-              <a href="{{ url_for('equipment.detail_get', equipment_id=eq.id) }}" class="text-decoration-none fw-semibold">
+              <a href="{{ url_for('equipment_detail_get', id=eq.id) }}" class="text-decoration-none fw-semibold d-block">
                 {{ eq.name }}
               </a>
+              <span class="small text-muted">{{ eq.location }}</span>
             </td>
-            <td>{{ eq.location }}</td>
 
-            <!-- 担当者名（未割当の場合は「─」） -->
-            <td>
+            <!-- 設備種別 -->
+            <td class="text-nowrap">{{ eq.equipment_type }}</td>
+
+            <!-- エリア -->
+            <td>{{ eq.area if eq.area else '─' }}</td>
+
+            <!-- 担当者（未割当の場合はバッジで強調） -->
+            <td class="text-nowrap">
               {% if eq.assigned_user_name %}
               {{ eq.assigned_user_name }}
               {% else %}
-              <span class="text-muted">─</span>
-              {% endif %}
-            </td>
-
-            <!-- 次回点検日 -->
-            <td>
-              {% if eq.next_inspection_date %}
-              {{ eq.next_inspection_date }}
-              {% else %}
-              <span class="text-muted">─（未点検）</span>
+              <span class="badge bg-warning text-dark">担当未登録</span>
               {% endif %}
             </td>
 
             <!-- 期限ステータスバッジ -->
-            <td>
+            <td class="text-nowrap">
               {% if eq.deadline_status == 'overdue' %}
               <span class="badge bg-danger">超過</span>
               {% elif eq.deadline_status == 'soon' %}
@@ -257,8 +584,20 @@
               {% endif %}
             </td>
 
+            <!-- 次回点検日（超過・間近は色付きで表示） -->
+            <td class="text-nowrap">
+              {% if eq.next_inspection_date %}
+              <span
+                class="{% if eq.deadline_status == 'overdue' %}text-danger fw-semibold{% elif eq.deadline_status == 'soon' %}c-yellow fw-semibold{% endif %}">
+                {{ eq.next_inspection_date }}
+              </span>
+              {% else %}
+              <span class="text-muted">─（未点検）</span>
+              {% endif %}
+            </td>
+
             <!-- 最新点検ステータスバッジ -->
-            <td>
+            <td class="text-nowrap">
               {% if eq.latest_inspection_status == 'normal' %}
               <span class="badge bg-success">正常</span>
               {% elif eq.latest_inspection_status == 'watch' %}
@@ -271,10 +610,10 @@
             </td>
 
             <!-- 操作ボタン -->
-            <td class="text-center">
-              <a href="{{ url_for('inspections.new_get') }}?equipment_id={{ eq.id }}"
-                 class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-clipboard-plus me-1"></i>点検記録登録
+            <td class="text-center text-nowrap">
+              <a href="{{ url_for('inspection_new_get') }}?equipment_id={{ eq.id }}"
+                class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-pencil"></i>
               </a>
             </td>
           </tr>
@@ -282,48 +621,544 @@
         </tbody>
       </table>
     </div>
+
+    <!-- ダッシュボード設備テーブルのページネーション -->
+    <div class="text-center mt-2 px-3 pb-2">
+      <small class="text-muted d-block mb-1" id="dashPageInfo"></small>
+      <div id="dashPagination"></div>
+    </div>
+
     {% else %}
-    <!-- 設備がない場合 -->
+    <!-- 該当設備なし -->
     <div class="text-center text-muted py-5">
       <i class="bi bi-inbox display-4"></i>
-      <p class="mt-2">担当設備がありません。</p>
+      <p class="mt-2">
+        {% if keyword or status_filter %}
+        条件に一致する設備がありません。
+        {% else %}
+        担当設備がありません。
+        {% endif %}
+      </p>
+      {% if keyword or status_filter %}
+      <a href="{{ url_for('dashboard_get') }}{% if selected_base %}?base={{ selected_base }}{% endif %}"
+        class="btn btn-outline-secondary btn-sm">
+        フィルタをクリア
+      </a>
+      {% endif %}
     </div>
     {% endif %}
   </div>
-
-  {% if pagination.pages > 1 %}
-  <div class="card-footer bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="text-muted small">1ページあたり {{ pagination.per_page }} 件</span>
-    <nav aria-label="設備一覧ページ">
-      <ul class="pagination pagination-sm mb-0">
-        <li class="page-item{% if not pagination.has_prev %} disabled{% endif %}">
-          <a class="page-link"
-             href="{{ url_for('dashboard.index', page=pagination.prev_num, base=selected_base, equipment_type=selected_type, manufacturer=selected_manufacturer, engineer_id=selected_engineer, group_by=selected_group, sort_by=selected_sort, sort_order=selected_order) if pagination.has_prev else '#' }}">
-            前へ
-          </a>
-        </li>
-        {% for page_number in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-          {% if page_number %}
-          <li class="page-item{% if page_number == pagination.page %} active{% endif %}">
-            <a class="page-link"
-               href="{{ url_for('dashboard.index', page=page_number, base=selected_base, equipment_type=selected_type, manufacturer=selected_manufacturer, engineer_id=selected_engineer, group_by=selected_group, sort_by=selected_sort, sort_order=selected_order) }}">
-              {{ page_number }}
-            </a>
-          </li>
-          {% else %}
-          <li class="page-item disabled"><span class="page-link">…</span></li>
-          {% endif %}
-        {% endfor %}
-        <li class="page-item{% if not pagination.has_next %} disabled{% endif %}">
-          <a class="page-link"
-             href="{{ url_for('dashboard.index', page=pagination.next_num, base=selected_base, equipment_type=selected_type, manufacturer=selected_manufacturer, engineer_id=selected_engineer, group_by=selected_group, sort_by=selected_sort, sort_order=selected_order) if pagination.has_next else '#' }}">
-            次へ
-          </a>
-        </li>
-      </ul>
-    </nav>
-  </div>
-  {% endif %}
 </div>
+
+<script>
+  // フィルタチップの × ボタン：指定パラメータを URLから削除してページ遷移する
+  function removeFilter(paramName) {
+    var url = new URL(window.location.href);
+    url.searchParams.delete(paramName);
+    window.location.href = url.toString();
+  }
+
+  // 現在時刻を「YYYY/MM/DD HH:MM:SS」形式で返す
+  function formatNow(date) {
+    function pad(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    return date.getFullYear() + "/"
+      + pad(date.getMonth() + 1) + "/"
+      + pad(date.getDate()) + " "
+      + pad(date.getHours()) + ":"
+      + pad(date.getMinutes()) + ":"
+      + pad(date.getSeconds());
+  }
+
+  // ヘッダーの現在時刻を1秒ごとに更新する
+  function startCurrentTimeTicker() {
+    var dateEl = document.getElementById("currentDateTime");
+    if (!dateEl) {
+      return;
+    }
+
+    function tick() {
+      dateEl.textContent = formatNow(new Date());
+    }
+
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  // 拠点名と座標・表示ラベルの対応表
+  var BASE_COORDINATES = {
+    "東京": { lat: 35.6762, lon: 139.6503, label: "東京" },
+    "東京本社": { lat: 35.6762, lon: 139.6503, label: "東京" },
+    "東京本社拠点": { lat: 35.6762, lon: 139.6503, label: "東京" },
+    "大阪": { lat: 34.6937, lon: 135.5023, label: "大阪" },
+    "大阪拠点": { lat: 34.6937, lon: 135.5023, label: "大阪" },
+    "名古屋": { lat: 35.1815, lon: 136.9066, label: "名古屋" },
+    "名古屋拠点": { lat: 35.1815, lon: 136.9066, label: "名古屋" },
+    "札幌": { lat: 43.0642, lon: 141.3469, label: "札幌" },
+    "仙台": { lat: 38.2688, lon: 140.8721, label: "仙台" },
+    "横浜": { lat: 35.4437, lon: 139.6380, label: "横浜" },
+    "京都": { lat: 35.0116, lon: 135.7681, label: "京都" },
+    "神戸": { lat: 34.6901, lon: 135.1956, label: "神戸" },
+    "広島": { lat: 34.3853, lon: 132.4553, label: "広島" },
+    "福岡": { lat: 33.5904, lon: 130.4017, label: "福岡" },
+  };
+
+  // 拠点名から座標を取得する（完全一致 → 部分一致 → 東京デフォルト）
+  function getCoordinates(baseName) {
+    if (BASE_COORDINATES[baseName]) {
+      return BASE_COORDINATES[baseName];
+    }
+    for (var key in BASE_COORDINATES) {
+      if (baseName.indexOf(key) !== -1) {
+        return BASE_COORDINATES[key];
+      }
+    }
+    return BASE_COORDINATES["東京"];
+  }
+
+  // Open-Meteoから指定拠点の現在天気を取得して表示する
+  async function fetchWeatherInfo() {
+    var weatherEl = document.getElementById("weatherInfo");
+    if (!weatherEl) {
+      return;
+    }
+
+    // data属性から拠点名を取得して座標を決定する
+    var weatherLocation = weatherEl.getAttribute("data-location") || "東京";
+    var coords = getCoordinates(weatherLocation);
+
+    var endpoint = "https://api.open-meteo.com/v1/forecast"
+      + "?latitude=" + coords.lat
+      + "&longitude=" + coords.lon
+      + "&current=temperature_2m,weather_code&timezone=Asia%2FTokyo";
+
+    var weatherLabelMap = {
+      0: "快晴🌤",
+      1: "晴れ☀️",
+      2: "薄曇り🌥",
+      3: "曇り☁️",
+      45: "霧🌫",
+      48: "霧氷❄️",
+      51: "弱い霧雨🌦",
+      53: "霧雨🌧",
+      55: "強い霧雨🌧",
+      61: "弱い雨🌦",
+      63: "雨🌧",
+      65: "強い雨🌧",
+      71: "弱い雪🌨",
+      73: "雪❄️",
+      75: "強い雪❄️",
+      80: "弱いにわか雨🌦",
+      81: "にわか雨🌧",
+      82: "強いにわか雨🌧",
+      95: "雷🌤"
+    };
+
+    try {
+      var response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error("天気APIエラー");
+      }
+
+      var data = await response.json();
+      var current = data.current || {};
+      var temp = current.temperature_2m;
+      var code = current.weather_code;
+      var label = weatherLabelMap[code] || "不明";
+
+      if (typeof temp === "number") {
+        weatherEl.textContent = coords.label + " " + label + " " + temp.toFixed(1) + "℃";
+      } else {
+        weatherEl.textContent = "天気情報を取得できませんでした";
+      }
+    } catch (error) {
+      weatherEl.textContent = "天気情報を取得できませんでした";
+    }
+  }
+
+  // スティッキー要素の top 位置を設定する
+  function setStickyOffsets() {
+    var titleBar = document.querySelector(".dashboard-title-bar");
+    var cardHeader = document.getElementById("tableCardHeader");
+
+    if (!titleBar) return;
+    var titleHeight = titleBar.offsetHeight;
+
+    // カードヘッダーの固定位置をタイトルバーの高さに合わせる
+    if (cardHeader) {
+      cardHeader.style.top = titleHeight + "px";
+    }
+
+    // アンカーリンクでテーブルカードへ飛んだ際にスティッキーヘッダーで隠れないようにする
+    var tableCard = document.getElementById("tableCard");
+    if (tableCard) {
+      tableCard.style.scrollMarginTop = titleHeight + "px";
+    }
+
+    // テーブル列ヘッダーをカードヘッダーの直下に固定する
+    var cardHeaderHeight = cardHeader ? cardHeader.offsetHeight : 0;
+    document.querySelectorAll(".fixed-table thead th").forEach(function (th) {
+      th.style.top = (titleHeight + cardHeaderHeight) + "px";
+    });
+  }
+
+  // 緊急対応リストの開閉に合わせてアイコンを回転させる
+  document.addEventListener("DOMContentLoaded", function () {
+    var urgentCollapse = document.getElementById("urgentListBody");
+    var urgentIcon = document.getElementById("urgentToggleIcon");
+    if (urgentCollapse && urgentIcon) {
+      urgentCollapse.addEventListener("show.bs.collapse", function () {
+        urgentIcon.style.transform = "rotate(180deg)";
+      });
+      urgentCollapse.addEventListener("hide.bs.collapse", function () {
+        urgentIcon.style.transform = "rotate(0deg)";
+      });
+    }
+  });
+
+  // 初期化処理
+  document.addEventListener("DOMContentLoaded", function () {
+    startCurrentTimeTicker();
+    fetchWeatherInfo();
+    setStickyOffsets();
+    window.addEventListener("resize", setStickyOffsets);
+    // デフォルトで次回点検日（列5）の昇順ソートを適用する（ソート後にページネーションも初期化される）
+    sortTable(5, "date");
+    // sortTable 内で renderDashPage を呼ぶため、テーブルがない場合だけここで呼ぶ
+    if (!document.getElementById('dashTable')) {
+      renderDashPage();
+    }
+  });
+
+  // ソート状態（どの列を、どの方向でソート中か）
+  var sortState = { col: null, dir: "none" };
+  var urgentSortState = { col: null, dir: "none" };
+
+  // 最新点検ステータスの優先順位（数値が小さいほど優先度が高い）
+  var STATUS_ORDER = { "要修理": 0, "要観察": 1, "正常": 2, "─": 3 };
+
+  // 指定した列でテーブルをソートする
+  // colIndex: 列インデックス（0始まり）、type: 'date' または 'status'
+  function sortTable(colIndex, type) {
+    var table = document.querySelector("#tableWrapper table.table");
+    if (!table) return;
+
+    // 同じ列を再クリックした場合は昇順・降順を反転、別の列は昇順で開始
+    var newDir;
+    if (sortState.col === colIndex) {
+      newDir = sortState.dir === "asc" ? "desc" : "asc";
+    } else {
+      newDir = "asc";
+    }
+    sortState.col = colIndex;
+    sortState.dir = newDir;
+
+    var tbody = table.querySelector("tbody");
+    var rows = Array.from(tbody.querySelectorAll("tr"));
+
+    rows.sort(function (a, b) {
+      if (a.cells.length <= colIndex || b.cells.length <= colIndex) return 0;
+
+      var aText = a.cells[colIndex].textContent.trim();
+      var bText = b.cells[colIndex].textContent.trim();
+
+      if (type === "date") {
+        // 未点検は常に末尾に配置する
+        var aEmpty = aText.indexOf("─") !== -1;
+        var bEmpty = bText.indexOf("─") !== -1;
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty) return 1;
+        if (bEmpty) return -1;
+
+        var aDate = new Date(aText);
+        var bDate = new Date(bText);
+        if (isNaN(aDate) || isNaN(bDate)) return 0;
+        return newDir === "asc" ? aDate - bDate : bDate - aDate;
+
+      } else if (type === "status") {
+        var aOrder = (aText in STATUS_ORDER) ? STATUS_ORDER[aText] : 99;
+        var bOrder = (bText in STATUS_ORDER) ? STATUS_ORDER[bText] : 99;
+        return newDir === "asc" ? aOrder - bOrder : bOrder - aOrder;
+      }
+
+      return 0;
+    });
+
+    // 並び替えた行を tbody に再追加する
+    rows.forEach(function (row) { tbody.appendChild(row); });
+
+    // 全アイコンをリセットしてから、現在ソート中の列のアイコンだけ更新する
+    document.querySelectorAll("[data-sort-icon-col]").forEach(function (icon) {
+      icon.className = "bi bi-arrow-down-up ms-1";
+      icon.style.fontSize = "0.75rem";
+    });
+    var activeIcon = document.querySelector("[data-sort-icon-col='" + colIndex + "']");
+    if (activeIcon) {
+      activeIcon.className = newDir === "asc" ? "bi bi-sort-down ms-1" : "bi bi-sort-up ms-1";
+      activeIcon.style.fontSize = "0.75rem";
+    }
+
+    // ソート後にページネーションを再描画する
+    dashCurrentPage = 1;
+    renderDashPage();
+  }
+
+  // ===== ダッシュボード設備テーブルのページネーション =====
+  var DASH_PAGE_SIZE = 20;
+  var dashCurrentPage = 1;
+
+  function getDashRows() {
+    return Array.from(document.querySelectorAll('#dashTable tbody tr'));
+  }
+
+  function renderDashPage() {
+    var rows       = getDashRows();
+    var totalCount = rows.length;
+    var totalPages = Math.max(1, Math.ceil(totalCount / DASH_PAGE_SIZE));
+    if (dashCurrentPage > totalPages) dashCurrentPage = totalPages;
+
+    var start = (dashCurrentPage - 1) * DASH_PAGE_SIZE;
+    var end   = start + DASH_PAGE_SIZE;
+
+    rows.forEach(function (row, idx) {
+      row.classList.toggle('page-hidden', idx < start || idx >= end);
+    });
+
+    var pageInfoEl = document.getElementById('dashPageInfo');
+    if (pageInfoEl) {
+      pageInfoEl.textContent = totalCount === 0
+        ? '0 件'
+        : '全 ' + totalCount + ' 件中 ' + (start + 1) + '〜' + Math.min(end, totalCount) + ' 件表示';
+    }
+
+    renderDashPagination(totalPages);
+  }
+
+  function renderDashPagination(totalPages) {
+    var container = document.getElementById('dashPagination');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    var pages = [];
+    if (totalPages <= 7) {
+      for (var i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (dashCurrentPage > 3) pages.push('...');
+      var from = Math.max(2, dashCurrentPage - 1);
+      var to   = Math.min(totalPages - 1, dashCurrentPage + 1);
+      for (var i = from; i <= to; i++) pages.push(i);
+      if (dashCurrentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+
+    var html = '<nav><ul class="pagination pagination-sm mb-0">';
+    html += '<li class="page-item' + (dashCurrentPage === 1 ? ' disabled' : '') + '">';
+    html += '<a class="page-link" href="#" data-page="' + (dashCurrentPage - 1) + '">&#8592;</a></li>';
+    pages.forEach(function (p) {
+      if (p === '...') {
+        html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+      } else {
+        html += '<li class="page-item' + (p === dashCurrentPage ? ' active' : '') + '">';
+        html += '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a></li>';
+      }
+    });
+    html += '<li class="page-item' + (dashCurrentPage === totalPages ? ' disabled' : '') + '">';
+    html += '<a class="page-link" href="#" data-page="' + (dashCurrentPage + 1) + '">&#8594;</a></li>';
+    html += '</ul></nav>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('[data-page]').forEach(function (link) {
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        var page = parseInt(this.dataset.page);
+        if (page >= 1 && page <= totalPages) {
+          dashCurrentPage = page;
+          renderDashPage();
+          var tableCard = document.getElementById('tableCard');
+          if (tableCard) tableCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  }
+
+  // 緊急対応リスト用ソート
+  function sortUrgentTable(colIndex, type) {
+    var table = document.getElementById("urgentTable");
+    if (!table) return;
+
+    var newDir;
+    if (urgentSortState.col === colIndex) {
+      newDir = urgentSortState.dir === "asc" ? "desc" : "asc";
+    } else {
+      newDir = "asc";
+    }
+    urgentSortState.col = colIndex;
+    urgentSortState.dir = newDir;
+
+    var tbody = table.querySelector("tbody");
+    var rows = Array.from(tbody.querySelectorAll("tr"));
+
+    rows.sort(function (a, b) {
+      if (a.cells.length <= colIndex || b.cells.length <= colIndex) return 0;
+
+      var aText = a.cells[colIndex].textContent.trim();
+      var bText = b.cells[colIndex].textContent.trim();
+
+      if (type === "date") {
+        var aEmpty = aText.indexOf("─") !== -1;
+        var bEmpty = bText.indexOf("─") !== -1;
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty) return 1;
+        if (bEmpty) return -1;
+
+        var aDate = new Date(aText);
+        var bDate = new Date(bText);
+        if (isNaN(aDate) || isNaN(bDate)) return 0;
+        return newDir === "asc" ? aDate - bDate : bDate - aDate;
+      }
+
+      if (type === "status") {
+        var aOrder = (aText in STATUS_ORDER) ? STATUS_ORDER[aText] : 99;
+        var bOrder = (bText in STATUS_ORDER) ? STATUS_ORDER[bText] : 99;
+        return newDir === "asc" ? aOrder - bOrder : bOrder - aOrder;
+      }
+
+      return 0;
+    });
+
+    rows.forEach(function (row) { tbody.appendChild(row); });
+
+    document.querySelectorAll("[data-urgent-sort-icon-col]").forEach(function (icon) {
+      icon.className = "bi bi-arrow-down-up ms-1";
+      icon.style.fontSize = "0.75rem";
+    });
+    var activeIcon = document.querySelector("[data-urgent-sort-icon-col='" + colIndex + "']");
+    if (activeIcon) {
+      activeIcon.className = newDir === "asc" ? "bi bi-sort-down ms-1" : "bi bi-sort-up ms-1";
+      activeIcon.style.fontSize = "0.75rem";
+    }
+  }
+</script>
+
+{% if session['user']['role'] in ['root', 'admin'] %}
+<!-- Chart.js（グラフ描画ライブラリ） -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  // Pythonから渡された分析データ（JSON）を受け取る
+  var locationStats = {{ location_stats_json | safe }};
+  var monthlySchedule = {{ monthly_schedule_json | safe }};
+
+  // 拠点別異常件数の横棒グラフを初期化する
+  function initLocationChart() {
+    var ctx = document.getElementById("locationChart");
+    if (!ctx || locationStats.length === 0) {
+      if (ctx) {
+        ctx.parentElement.innerHTML = '<p class="text-center text-muted py-4">データがありません</p>';
+      }
+      return;
+    }
+
+    var labels = locationStats.map(function (s) { return s.base_name; });
+    var overdueData = locationStats.map(function (s) { return s.overdue; });
+    var repairData = locationStats.map(function (s) { return s.repair; });
+    var unassignedData = locationStats.map(function (s) { return s.unassigned; });
+
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          { label: "期限超過", data: overdueData, backgroundColor: "rgba(220, 38,  38,  0.75)" },
+          { label: "要修理", data: repairData, backgroundColor: "rgba(109, 40,  217, 0.75)" },
+          { label: "担当未登録", data: unassignedData, backgroundColor: "rgba(234, 112,  1,  0.75)" }
+        ]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "top" } },
+        scales: {
+          x: { stacked: true, ticks: { stepSize: 1 } },
+          y: { stacked: true }
+        }
+      }
+    });
+  }
+
+  // 月別点検スケジュールの棒グラフを初期化する（拠点選択時に表示）
+  function initMonthlyScheduleChart() {
+    var ctx = document.getElementById("monthlyScheduleChart");
+    if (!ctx) return;
+
+    var labels = monthlySchedule.map(function (m) { return m.week_label; });
+    var counts = monthlySchedule.map(function (m) { return m.count; });
+    // 超過バーは赤、それ以外は青紫で表示する
+    var colors = monthlySchedule.map(function (m) {
+      return m.is_overdue ? "rgba(220, 38, 38, 0.75)" : "rgba(79, 70, 229, 0.7)";
+    });
+
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "点検予定件数",
+          data: counts,
+          backgroundColor: colors,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    initLocationChart();
+    initMonthlyScheduleChart();
+  });
+</script>
+{% endif %}
+
+<!-- ページトップへ戻るボタン -->
+<button id="scrollTopBtn" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })" title="ページトップへ戻る" style="
+    display: none;
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 9999;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: #4F46E5;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.2s;
+  ">
+  <i class="bi bi-arrow-up"></i>
+</button>
+<script>
+  // スクロール量に応じてボタンの表示・非表示を切り替える
+  (function () {
+    var btn = document.getElementById("scrollTopBtn");
+    window.addEventListener("scroll", function () {
+      if (window.scrollY > 300) {
+        btn.style.display = "block";
+      } else {
+        btn.style.display = "none";
+      }
+    });
+  })();
+</script>
 
 {% endblock %}

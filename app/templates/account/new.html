@@ -20,7 +20,7 @@
     {% endif %}
 
     <!-- アカウント登録フォーム -->
-    <form method="POST" action="{{ url_for('accounts.new_post') }}">
+    <form method="POST" action="{{ url_for('account_new_post') }}">
       <!-- CSRF対策トークン -->
       {{ form.hidden_tag() if form else '' }}
 
@@ -36,7 +36,7 @@
                  id="employee_no"
                  name="employee_no"
                  value="{{ form_data.employee_no if form_data else '' }}"
-                 placeholder="例: TEC-201"
+                 placeholder="例: ENG-021"
                  required>
         </div>
 
@@ -138,19 +138,41 @@
                  name="phone"
                  value="{{ form_data.phone if form_data and form_data.phone else '' }}"
                  placeholder="例: 090-1234-5678">
-          <div class="form-text">任意入力です。</div>
+          <div class="form-text">入力は任意です。</div>
         </div>
 
         <!-- 拠点（任意） -->
         <div class="col-md-6">
-          <label for="base" class="form-label">拠点</label>
+          <label for="base_select" class="form-label">拠点</label>
+          <select class="form-select" id="base_select" name="base" onchange="toggleBaseInput()">
+            <option value="">─ 未設定 ─</option>
+            {% if session['user']['role'] == 'root' %}
+            <!-- root は「新規追加」を選択すると入力欄が表示される -->
+            <option value="__new__"
+                    {% if form_data and form_data.get('base') == '__new__' %}selected{% endif %}>
+              ＋ 新規追加
+            </option>
+            {% endif %}
+            {% for b in base_list %}
+            <option value="{{ b }}"
+                    {% if form_data and form_data.get('base') == b %}selected{% endif %}>
+              {{ b }}
+            </option>
+            {% endfor %}
+          </select>
+          {% if session['user']['role'] == 'root' %}
+          <!-- 「新規追加」選択時のみ表示するテキスト入力欄 -->
           <input type="text"
-                 class="form-control"
-                 id="base"
-                 name="base"
-                 value="{{ form_data.base if form_data and form_data.base else '' }}"
-                 placeholder="例: 東雲中央サービス拠点">
-          <div class="form-text">任意入力です。</div>
+                 class="form-control mt-2"
+                 id="base_new_input"
+                 name="base_new"
+                 value="{{ form_data.get('base_new', '') if form_data else '' }}"
+                 placeholder="新しい拠点名を入力"
+                 style="display: none;">
+          <div class="form-text">選択または新規登録してください。</div>
+          {% else %}
+          <div class="form-text">選択してください。</div>
+          {% endif %}
         </div>
 
       </div>
@@ -160,7 +182,7 @@
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-check-circle me-1"></i>登録
         </button>
-        <a href="{{ url_for('accounts.list_get') }}" class="btn btn-outline-secondary">
+        <a href="{{ url_for('account_list_get') }}" class="btn btn-outline-secondary">
           <i class="bi bi-x-circle me-1"></i>キャンセル
         </a>
       </div>
@@ -168,5 +190,24 @@
     </form>
   </div>
 </div>
+
+<script>
+/* 「新規追加」選択時のみテキスト入力欄を表示する */
+function toggleBaseInput() {
+  var select = document.getElementById('base_select');
+  var input = document.getElementById('base_new_input');
+  if (!input) return;
+  if (select.value === '__new__') {
+    input.style.display = '';
+  } else {
+    input.style.display = 'none';
+    input.value = '';
+  }
+}
+/* ページ読み込み時に初期状態を設定する（エラー再表示時に状態を復元） */
+document.addEventListener('DOMContentLoaded', function() {
+  toggleBaseInput();
+});
+</script>
 
 {% endblock %}

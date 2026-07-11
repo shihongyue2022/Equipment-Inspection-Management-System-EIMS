@@ -1,154 +1,398 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}設備点検管理システム{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler/css/tabler.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler-icons/tabler-icons.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- ページ描画前にサイドバーの折りたたみ状態を確定してフラッシュを防ぐ -->
+  <script>
+    (function() {
+      if (window.innerWidth >= 992 && localStorage.getItem("sidebarState") === "collapsed") {
+        document.documentElement.setAttribute("data-sidebar", "collapsed");
+      }
+    })();
+  </script>
+  <!-- フラッシュ防止用インラインCSS（外部CSS読み込み前から即時適用） -->
+  <style>
+    html[data-sidebar="collapsed"] #sidebar {
+      width: 52px !important;
+      overflow: hidden !important;
+      transition: none !important;
+    }
+    html[data-sidebar="collapsed"] #sidebar .sidebar-collapse-hide {
+      display: none !important;
+    }
+    html[data-sidebar="collapsed"] #sidebar .sidebar-link-text {
+      display: none !important;
+    }
+  </style>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- ファビコン -->
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+  <!-- カスタムCSS -->
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
 </head>
-<body>
-  <div class="page">
-    <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
-      <div class="container-fluid">
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-                data-bs-target="#sidebar-menu" aria-controls="sidebar-menu"
-                aria-expanded="false" aria-label="ナビゲーションを開く">
-          <span class="navbar-toggler-icon"></span>
-        </button>
+<body class="bg-light">
 
-        <h1 class="navbar-brand navbar-brand-autodark">
-          <a href="{{ url_for('dashboard.index') }}" class="d-flex align-items-center gap-2 text-decoration-none">
-            <span class="brand-mark"><i class="bi bi-tools"></i></span>
-            <span class="brand-copy">
-              <span class="brand-title">EIMS</span>
-              <span class="brand-subtitle">設備点検管理</span>
-            </span>
+  <div class="d-flex">
+
+    <!-- ========== 左サイドバー ========== -->
+    <nav id="sidebar" class="sidebar bg-primary d-flex flex-column flex-shrink-0">
+
+      <!-- ハンバーガーボタン + ロゴ + 通知ベル -->
+      <div class="p-3 border-bottom border-white border-opacity-25" id="sidebarHeader">
+        <div class="d-flex align-items-center" id="sidebarHeaderInner">
+          <!-- ハンバーガーボタン（デスクトップのみ・常時表示・折りたたみ時も残る） -->
+          <button id="desktopSidebarToggle"
+                  class="btn btn-sm btn-outline-light border-0 p-1 d-none d-lg-block"
+                  title="メニュー開閉">
+            <i class="bi bi-list fs-5"></i>
+          </button>
+          <!-- ロゴ（折りたたみ時は非表示） -->
+          <a href="{{ url_for('dashboard_get') }}" class="d-block ms-2 me-auto sidebar-collapse-hide">
+            <img src="{{ url_for('static', filename='et_ech_white.png') }}" alt="ロゴ" height="34">
           </a>
-        </h1>
-
-        <div class="navbar-nav flex-row d-lg-none">
-          {% if session.get('user') %}
-          <div class="nav-item dropdown">
-            <a href="#" class="nav-link d-flex lh-1 text-reset" data-bs-toggle="dropdown" aria-label="ユーザーメニュー">
-              <span class="avatar avatar-sm">{{ session['user']['last_name'][:1] }}{{ session['user']['first_name'][:1] }}</span>
-            </a>
-            <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
-              <a href="{{ url_for('accounts.my_password_get') }}" class="dropdown-item">パスワード変更</a>
-              <form method="post" action="{{ url_for('auth.logout') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="dropdown-item text-danger">ログアウト</button>
-              </form>
-            </div>
-          </div>
-          {% endif %}
-        </div>
-
-        <div class="collapse navbar-collapse" id="sidebar-menu">
-          <ul class="navbar-nav pt-lg-3">
-            <li class="nav-item{% if request.endpoint and request.endpoint.startswith('dashboard.') %} active{% endif %}">
-              <a class="nav-link" href="{{ url_for('dashboard.index') }}">
-                <span class="nav-link-icon"><i class="bi bi-speedometer2"></i></span>
-                <span class="nav-link-title">ダッシュボード</span>
-              </a>
-            </li>
-            {% if session.get('user') and session['user']['role'] in ['root', 'admin'] %}
-            <li class="nav-item{% if request.endpoint and request.endpoint.startswith('equipment.') %} active{% endif %}">
-              <a class="nav-link" href="{{ url_for('equipment.list_get') }}">
-                <span class="nav-link-icon"><i class="bi bi-list-ul"></i></span>
-                <span class="nav-link-title">設備管理</span>
-              </a>
-            </li>
-            {% endif %}
-            <li class="nav-item{% if request.endpoint and request.endpoint.startswith('inspections.') %} active{% endif %}">
-              <a class="nav-link" href="{{ url_for('inspections.new_get') }}">
-                <span class="nav-link-icon"><i class="bi bi-clipboard-check"></i></span>
-                <span class="nav-link-title">点検記録登録</span>
-              </a>
-            </li>
-            {% if session.get('user') and session['user']['role'] in ['root', 'admin'] %}
-            <li class="nav-item{% if request.endpoint and request.endpoint.startswith('accounts.') %} active{% endif %}">
-              <a class="nav-link" href="{{ url_for('accounts.list_get') }}">
-                <span class="nav-link-icon"><i class="bi bi-people"></i></span>
-                <span class="nav-link-title">アカウント管理</span>
-              </a>
-            </li>
-            {% endif %}
-          </ul>
-
-          {% if session.get('user') %}
-          <div class="sidebar-user mt-auto d-none d-lg-block">
-            <div class="d-flex align-items-center gap-3">
-              <span class="avatar bg-primary-lt">{{ session['user']['last_name'][:1] }}{{ session['user']['first_name'][:1] }}</span>
-              <div class="min-w-0 flex-fill">
-                <div class="fw-semibold text-truncate">{{ session['user']['last_name'] }}{{ session['user']['first_name'] }}</div>
-                <div class="text-secondary small">
-                  {% if session['user']['role'] == 'root' %}ROOT
-                  {% elif session['user']['role'] == 'admin' %}管理者
-                  {% else %}フィールドエンジニア{% endif %}
-                </div>
-              </div>
-            </div>
-            <div class="d-flex gap-2 mt-3">
-              <a href="{{ url_for('accounts.my_password_get') }}" class="btn btn-outline-secondary btn-sm flex-fill">
-                <i class="bi bi-key me-1"></i>設定
-              </a>
-              <form method="post" action="{{ url_for('auth.logout') }}" class="flex-fill">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-outline-danger btn-sm w-100">
-                  <i class="bi bi-box-arrow-right me-1"></i>終了
-                </button>
-              </form>
-            </div>
-          </div>
-          {% endif %}
         </div>
       </div>
-    </aside>
 
-    <div class="page-wrapper">
-      <header class="navbar navbar-expand-md d-none d-lg-flex d-print-none">
-        <div class="container-xl">
-          <div class="navbar-nav flex-row order-md-last ms-auto">
-            <div class="nav-item d-flex align-items-center text-secondary small">
-              <span class="status-dot status-dot-animated bg-green me-2"></span>
-              システム稼働中
-            </div>
-          </div>
-          <div class="navbar-nav">
-            <div class="nav-item text-secondary small">設備の状態と点検期限を一元管理</div>
-          </div>
-        </div>
-      </header>
+      <!-- ナビメニュー（折りたたみ時はアイコンのみ表示） -->
+      <ul class="nav flex-column p-2 flex-grow-1">
 
-      <main class="page-body">
-        <div class="container-xl">
-          {% with messages = get_flashed_messages(with_categories=true) %}
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible" role="alert">
-              <div class="d-flex">
-                <div><i class="bi bi-info-circle alert-icon"></i></div>
-                <div>{{ message }}</div>
-              </div>
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
-            </div>
-            {% endfor %}
-          {% endwith %}
-          {% block content %}{% endblock %}
+        <!-- ダッシュボード（全ユーザー） -->
+        <li class="nav-item mb-1">
+          <a class="nav-link text-white sidebar-link" href="{{ url_for('dashboard_get') }}">
+            <i class="bi bi-speedometer2 me-2"></i><span class="sidebar-link-text">ダッシュボード</span>
+          </a>
+        </li>
+
+        <!-- 設備一覧（root・管理者のみ） -->
+        {% if session.get('user') and session['user']['role'] in ['root', 'admin'] %}
+        <li class="nav-item mb-1">
+          <a class="nav-link text-white sidebar-link" href="{{ url_for('equipment_list_get') }}">
+            <i class="bi bi-list-ul me-2"></i><span class="sidebar-link-text">設備一覧</span>
+          </a>
+        </li>
+        {% endif %}
+
+        <!-- 点検記録登録（全ユーザー） -->
+        <li class="nav-item mb-1">
+          <a class="nav-link text-white sidebar-link" href="{{ url_for('inspection_new_get') }}">
+            <i class="bi bi-clipboard-check me-2"></i><span class="sidebar-link-text">点検記録登録</span>
+          </a>
+        </li>
+
+        <!-- アカウント管理（root・管理者のみ） -->
+        {% if session.get('user') and session['user']['role'] in ['root', 'admin'] %}
+        <li class="nav-item mb-1">
+          <a class="nav-link text-white sidebar-link" href="{{ url_for('account_list_get') }}">
+            <i class="bi bi-people me-2"></i><span class="sidebar-link-text">アカウント管理</span>
+          </a>
+        </li>
+        {% endif %}
+
+        <!-- ゴミ箱（root・管理者のみ） -->
+        {% if session.get('user') and session['user']['role'] in ['root', 'admin'] %}
+        <li class="nav-item mb-1">
+          <a class="nav-link text-white sidebar-link" href="{{ url_for('recycle_bin_get') }}">
+            <i class="bi bi-trash3 me-2"></i><span class="sidebar-link-text">ゴミ箱</span>
+          </a>
+        </li>
+        {% endif %}
+
+      </ul>
+
+      <!-- ユーザー情報（サイドバー下部） -->
+      {% if session.get('user') %}
+      <div class="p-3 border-top border-white border-opacity-25 sidebar-user-info">
+        <!-- アカウントアイコン・ユーザー名・ロール（折りたたみ時はアイコンのみ） -->
+        <div class="d-flex align-items-center text-white mb-2 sidebar-user-name-row">
+          <i class="bi bi-person-circle me-2 flex-shrink-0"></i>
+          <span class="text-truncate small sidebar-collapse-hide" style="max-width: 120px;">
+            {{ session['user']['last_name'] }}{{ session['user']['first_name'] }}
+          </span>
+          {% if session['user']['role'] == 'root' %}
+          <span class="badge bg-danger ms-1 flex-shrink-0 sidebar-collapse-hide">ROOT</span>
+          {% elif session['user']['role'] == 'admin' %}
+          <span class="badge bg-warning text-dark ms-1 flex-shrink-0 sidebar-collapse-hide">管理者</span>
+          {% else %}
+          <span class="badge bg-info ms-1 flex-shrink-0 sidebar-collapse-hide">FE</span>
+          {% endif %}
         </div>
+        <!-- パスワード変更・ログアウト（折りたたみ時は縦並び） -->
+        <div class="d-flex gap-2 sidebar-user-buttons">
+          <a href="{{ url_for('my_password_get') }}" class="btn btn-sm btn-outline-light" title="パスワード変更">
+            <i class="bi bi-key"></i>
+          </a>
+          <a href="{{ url_for('logout_get') }}" class="btn btn-sm btn-outline-light flex-grow-1 text-center sidebar-logout-btn" title="ログアウト">
+            <i class="bi bi-box-arrow-right"></i><span class="sidebar-collapse-hide ms-1">ログアウト</span>
+          </a>
+        </div>
+      </div>
+      {% endif %}
+
+    </nav>
+
+    <!-- モバイル用オーバーレイ（サイドバー背面の暗幕） -->
+    <div id="sidebarOverlay" class="sidebar-overlay d-none"></div>
+
+    <!-- ========== 通知パネル（fixed配置・サイドバーの右隣に表示） ========== -->
+    {% if session.get('user') %}
+    <div id="notificationPanel"
+         class="d-none position-fixed bg-white shadow rounded border"
+         style="z-index: 1060; width: 320px;">
+      <!-- パネルヘッダー -->
+      <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom"
+           style="background-color: #f8f9fa; border-radius: 0.375rem 0.375rem 0 0;">
+        <span class="fw-bold text-dark small">
+          <i class="bi bi-bell-fill me-1 text-primary"></i>お知らせ
+        </span>
+        <button type="button" class="btn-close" style="font-size: 0.7rem;"
+                onclick="closeNotificationPanel()"></button>
+      </div>
+      <!-- 集計バッジ行（期限超過・要修理・まもなく） -->
+      <div id="notificationSummary" class="px-3 py-2 border-bottom d-flex gap-2 flex-wrap">
+        <span class="text-muted small">読み込み中...</span>
+      </div>
+      <!-- 緊急対応リスト（JSで動的に挿入） -->
+      <div id="notificationList" class="overflow-auto" style="max-height: 280px;">
+      </div>
+      <!-- フッター -->
+      <div class="px-3 py-2 border-top text-center"
+           style="border-radius: 0 0 0.375rem 0.375rem;">
+        <a href="{{ url_for('dashboard_get') }}" class="text-decoration-none small text-primary">
+          ダッシュボードで確認 →
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ========== メインコンテンツ ========== -->
+    <div class="flex-grow-1" style="min-width: 0;">
+
+      <!-- モバイル用トップバー（デスクトップはサイドバー内のボタンを使用） -->
+      <div class="d-flex d-lg-none align-items-center bg-primary px-3 py-2">
+        <button class="btn btn-sm btn-outline-light me-2" id="mobileSidebarToggle" title="メニュー開閉">
+          <i class="bi bi-list fs-5"></i>
+        </button>
+        <img src="{{ url_for('static', filename='et_ech_white.png') }}" alt="ロゴ" height="28">
+      </div>
+
+      <main class="px-4 py-2">
+
+        <!-- フラッシュメッセージ -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show mb-3" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
       </main>
-
-      <footer class="footer footer-transparent d-print-none">
-        <div class="container-xl">
-          <div class="text-center text-secondary small">EIMS · Equipment Inspection Management System</div>
-        </div>
-      </footer>
     </div>
   </div>
 
-  <script src="{{ url_for('static', filename='vendor/tabler/js/tabler.min.js') }}"></script>
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- サイドバー開閉・現在ページハイライト -->
+  <script>
+    var mobileSidebarToggle  = document.getElementById("mobileSidebarToggle");
+    var desktopSidebarToggle = document.getElementById("desktopSidebarToggle");
+    var sidebarOverlay       = document.getElementById("sidebarOverlay");
+    var sidebar              = document.getElementById("sidebar");
+
+    // デスクトップ：サイドバーの折りたたみ／展開をトグルする
+    function toggleDesktopSidebar() {
+      if (sidebar.classList.contains("sidebar-collapsed")) {
+        sidebar.classList.remove("sidebar-collapsed");
+        localStorage.setItem("sidebarState", "expanded");
+      } else {
+        sidebar.classList.add("sidebar-collapsed");
+        localStorage.setItem("sidebarState", "collapsed");
+      }
+    }
+
+    // モバイル：サイドバーをスライドイン表示する
+    function openMobileSidebar() {
+      sidebar.classList.add("sidebar-open");
+      sidebarOverlay.classList.remove("d-none");
+    }
+
+    // モバイル：サイドバーを閉じる
+    function closeMobileSidebar() {
+      sidebar.classList.remove("sidebar-open");
+      sidebarOverlay.classList.add("d-none");
+    }
+
+    // ページ読み込み時にlocalStorageから折りたたみ状態を復元する（デスクトップのみ）
+    if (window.innerWidth >= 992) {
+      if (localStorage.getItem("sidebarState") === "collapsed") {
+        sidebar.classList.add("sidebar-collapsed");
+      }
+      // headスクリプトが仮付与したdata属性を削除してトランジションを有効にする
+      document.documentElement.removeAttribute("data-sidebar");
+    }
+
+    // デスクトップ：サイドバー内のハンバーガーボタン
+    if (desktopSidebarToggle) {
+      desktopSidebarToggle.addEventListener("click", toggleDesktopSidebar);
+    }
+
+    // モバイル：トップバーのハンバーガーボタン
+    if (mobileSidebarToggle) {
+      mobileSidebarToggle.addEventListener("click", openMobileSidebar);
+    }
+
+    // モバイル：オーバーレイクリックでサイドバーを閉じる
+    if (sidebarOverlay) {
+      sidebarOverlay.addEventListener("click", closeMobileSidebar);
+    }
+
+    // 現在のページに対応するサイドバーリンクをハイライトする
+    document.addEventListener("DOMContentLoaded", function() {
+      var currentPath = window.location.pathname;
+      var links = document.querySelectorAll(".sidebar-link");
+      links.forEach(function(link) {
+        var linkPath = link.getAttribute("href");
+        if (!linkPath) { return; }
+        // 完全一致またはサブパス（例：/equipment/123 → 設備一覧リンク）もハイライトする
+        if (currentPath === linkPath ||
+            (linkPath !== "/" && currentPath.startsWith(linkPath + "/"))) {
+          link.classList.add("active-page");
+        }
+      });
+    });
+  </script>
+
   {% block scripts %}{% endblock %}
+
+  <!-- ========== 通知パネル JavaScript ========== -->
+  {% if session.get('user') %}
+  <script>
+    // 通知パネルの開閉トグル
+    function toggleNotificationPanel() {
+      var panel = document.getElementById("notificationPanel");
+      if (!panel.classList.contains("d-none")) {
+        panel.classList.add("d-none");
+        return;
+      }
+      // ベルボタンの位置を基準にパネルを配置する
+      var bell = document.getElementById("notificationBell");
+      var rect = bell.getBoundingClientRect();
+      panel.style.top   = (rect.bottom + 8) + "px";
+      // ベルが右側に移動したため、パネルの右端をベルの右端に揃える
+      panel.style.left  = "auto";
+      panel.style.right = (window.innerWidth - rect.right) + "px";
+      panel.classList.remove("d-none");
+      loadNotifications();
+    }
+
+    // 通知パネルを閉じる
+    function closeNotificationPanel() {
+      document.getElementById("notificationPanel").classList.add("d-none");
+    }
+
+    // パネル外クリックで閉じる
+    document.addEventListener("click", function(e) {
+      var bell  = document.getElementById("notificationBell");
+      var panel = document.getElementById("notificationPanel");
+      if (bell && panel && !bell.contains(e.target) && !panel.contains(e.target)) {
+        panel.classList.add("d-none");
+      }
+    });
+
+    // HTMLエスケープ（XSS対策）
+    function escapeHtml(str) {
+      var div = document.createElement("div");
+      div.appendChild(document.createTextNode(str || ""));
+      return div.innerHTML;
+    }
+
+    // 通知データを取得してパネルを描画する
+    function loadNotifications() {
+      var summary = document.getElementById("notificationSummary");
+      var list    = document.getElementById("notificationList");
+      summary.innerHTML = '<span class="text-muted small">読み込み中...</span>';
+      list.innerHTML    = "";
+
+      fetch("/api/notifications")
+        .then(function(res) {
+          if (!res.ok) { throw new Error("fetch failed"); }
+          return res.json();
+        })
+        .then(function(data) {
+          // 集計バッジ行を更新する
+          summary.innerHTML =
+            '<span class="badge bg-danger"><i class="bi bi-exclamation-circle me-1"></i>期限超過 ' + data.overdue_count + '件</span>' +
+            '<span class="badge bg-warning text-dark"><i class="bi bi-tools me-1"></i>要修理 ' + data.repair_count + '件</span>' +
+            '<span class="badge bg-info text-dark"><i class="bi bi-clock me-1"></i>まもなく ' + data.soon_count + '件</span>';
+
+          // ベルボタンのバッジカウントを更新する
+          updateBadge(data.total_urgent);
+
+          // 緊急対応リストを描画する
+          if (data.urgent_items.length === 0) {
+            list.innerHTML = '<p class="text-center text-muted small py-3 mb-0">緊急対応が必要な設備はありません</p>';
+          } else {
+            var html = "";
+            data.urgent_items.forEach(function(item) {
+              var badges = "";
+              if (item.deadline_status === "overdue") {
+                badges += '<span class="badge bg-danger" style="font-size: 0.7rem;">期限超過</span>';
+              }
+              if (item.latest_inspection_status === "repair") {
+                badges += '<span class="badge bg-warning text-dark ms-1" style="font-size: 0.7rem;">要修理</span>';
+              }
+              html +=
+                '<a href="/equipment/' + item.id + '" class="d-flex align-items-center px-3 py-2 border-bottom text-decoration-none text-dark notification-item-link">' +
+                  '<div class="flex-grow-1 me-2" style="min-width: 0;">' +
+                    '<div class="small fw-bold text-truncate">' + escapeHtml(item.name) + '</div>' +
+                    '<div class="text-muted text-truncate" style="font-size: 0.72rem;">' + escapeHtml(item.location) + '</div>' +
+                  '</div>' +
+                  '<div class="flex-shrink-0 text-end">' + badges + '</div>' +
+                '</a>';
+            });
+            list.innerHTML = html;
+          }
+        })
+        .catch(function() {
+          list.innerHTML = '<p class="text-center text-muted small py-3 mb-0">データの取得に失敗しました</p>';
+        });
+    }
+
+    // ベルアイコンのバッジ件数を更新する
+    function updateBadge(count) {
+      var badge = document.getElementById("notificationBadge");
+      if (!badge) { return; }
+      if (count > 0) {
+        badge.textContent = count > 99 ? "99+" : count;
+        badge.classList.remove("d-none");
+      } else {
+        badge.classList.add("d-none");
+      }
+    }
+
+    // ページ読み込み時にバッジの件数だけ取得して表示する
+    document.addEventListener("DOMContentLoaded", function() {
+      fetch("/api/notifications")
+        .then(function(res) {
+          if (!res.ok) { return null; }
+          return res.json();
+        })
+        .then(function(data) {
+          if (data) { updateBadge(data.total_urgent); }
+        })
+        .catch(function() {});
+    });
+  </script>
+  {% endif %}
 </body>
 </html>

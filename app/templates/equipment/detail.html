@@ -3,13 +3,22 @@
 {% block title %}{{ equipment.name }} - 設備詳細 - 設備点検管理システム{% endblock %}
 
 {% block content %}
+<style>
+  .page-hidden   { display: none; }
+  .filter-hidden { display: none; }
+  .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
+  .sortable-th:hover { background: #e9ecef !important; }
+  .sort-icon { font-size: 0.7rem; color: #adb5bd; margin-left: 3px; }
+  .sort-icon.active { color: #0d6efd; }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2 class="mb-0">
     <i class="bi bi-info-circle me-2 text-primary"></i>設備詳細
   </h2>
   <!-- root・管理者のみ編集ボタンを表示 -->
   {% if session['user']['role'] in ['root', 'admin'] %}
-  <a href="{{ url_for('equipment.edit_get', equipment_id=equipment.id) }}" class="btn btn-outline-secondary">
+  <a href="{{ url_for('equipment_edit_get', id=equipment.id) }}" class="btn btn-outline-secondary">
     <i class="bi bi-pencil me-1"></i>編集
   </a>
   {% endif %}
@@ -75,6 +84,12 @@
         <div class="fw-semibold">{{ equipment.inspection_interval_months }}ヶ月ごと</div>
       </div>
 
+      <!-- エリア -->
+      <div class="col-md-6">
+        <label class="text-muted small">エリア</label>
+        <div class="fw-semibold">{{ equipment.area if equipment.area else '─' }}</div>
+      </div>
+
       <!-- 担当エンジニア -->
       <div class="col-md-6">
         <label class="text-muted small">担当エンジニア</label>
@@ -100,16 +115,12 @@
     <!-- ボタングループ -->
     <div class="mt-4 d-flex gap-2">
       <!-- 点検記録登録ボタン -->
-      <a href="{{ url_for('inspections.new_get') }}?equipment_id={{ equipment.id }}"
+      <a href="{{ url_for('inspection_new_get') }}?equipment_id={{ equipment.id }}&back={{ request.args.get('back', 'dashboard') }}"
          class="btn btn-primary">
         <i class="bi bi-clipboard-plus me-1"></i>点検記録登録
       </a>
-      <a href="{{ url_for('maintenance.new_get', equipment_id=equipment.id) }}"
-         class="btn btn-outline-primary">
-        <i class="bi bi-wrench-adjustable me-1"></i>修理対応登録
-      </a>
       <!-- 戻るボタン（遷移元に応じて戻り先が変わる） -->
-      <a href="{{ back_url if back_url else url_for('dashboard.index') }}"
+      <a href="{{ back_url if back_url else url_for('dashboard_get') }}"
          class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>戻る
       </a>
@@ -117,62 +128,515 @@
   </div>
 </div>
 
-<!-- 設備ライフサイクル（新しい順） -->
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-    <h5 class="mb-0">
-      <i class="bi bi-clipboard-data me-1"></i>点検・修理タイムライン
-    </h5>
-    <span class="text-muted small">新しい順</span>
-  </div>
-  <div class="card-body">
-    {% if timeline %}
-    <div class="equipment-timeline">
-      {% for event in timeline %}
-      <div class="equipment-timeline-event timeline-{{ event.kind }}">
-        <div class="equipment-timeline-marker" aria-hidden="true"></div>
-        <div class="equipment-timeline-content">
-          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-            <div>
-              <div class="text-muted small">{{ event.date }}</div>
-              <div class="fw-semibold mt-1">{{ event.title }}</div>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              {% if event.kind == 'inspection' %}
-                {% if event.status == 'normal' %}<span class="badge bg-success">異常なし</span>
-                {% elif event.status == 'watch' %}<span class="badge bg-warning text-dark">要観察</span>
-                {% else %}<span class="badge bg-danger">要修理</span>{% endif %}
-              {% elif event.kind == 'maintenance_completed' %}
-                <span class="badge bg-success">修理完了</span>
-              {% elif event.kind == 'maintenance_started' %}
-                <span class="badge bg-primary">対応中</span>
-              {% elif event.kind == 'maintenance_cancelled' %}
-                <span class="badge bg-secondary">取消</span>
-              {% else %}
-                <span class="badge bg-secondary">対応予定</span>
-              {% endif %}
-              {% if event.kind != 'inspection' %}
-              <a href="{{ url_for('maintenance.edit_get', maintenance_id=event.record.id) }}"
-                 class="btn btn-sm btn-outline-secondary">更新</a>
-              {% elif event.status == 'repair' and not event.record.maintenance_records %}
-              <a href="{{ url_for('maintenance.new_get', equipment_id=equipment.id, inspection_id=event.record.id) }}"
-                 class="btn btn-sm btn-outline-danger">修理対応</a>
-              {% endif %}
-            </div>
-          </div>
-          <div class="small mt-2">{{ event.detail if event.detail else '詳細なし' }}</div>
-          <div class="text-muted small mt-1">担当：{{ event.actor }}</div>
+{% if metrics %}
+<!-- 設備指標カード -->
+<div class="row g-3 mb-4">
+
+  <!-- 点検ベース稼働率 -->
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100 text-center py-3"
+         role="button" data-bs-toggle="modal" data-bs-target="#modalAvailability"
+         style="cursor:pointer;" title="クリックで詳細を表示">
+      <div class="card-body p-2">
+        <div class="text-muted small mb-1">
+          点検ベース稼働率
+          <i class="bi bi-info-circle ms-1" style="font-size:0.75rem;"></i>
+        </div>
+        <div class="fw-bold fs-3
+          {% if metrics.availability >= 80 %}text-success
+          {% elif metrics.availability >= 60 %}text-warning
+          {% else %}text-danger{% endif %}">
+          {{ metrics.availability }}%
+        </div>
+        <div class="text-muted" style="font-size:0.75rem;">
+          正常 {{ metrics.normal_count }} / 計 {{ metrics.total }} 回
         </div>
       </div>
-      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 点検遵守率 -->
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100 text-center py-3"
+         role="button" data-bs-toggle="modal" data-bs-target="#modalCompliance"
+         style="cursor:pointer;" title="クリックで詳細を表示">
+      <div class="card-body p-2">
+        <div class="text-muted small mb-1">
+          点検遵守率
+          <i class="bi bi-info-circle ms-1" style="font-size:0.75rem;"></i>
+        </div>
+        {% if metrics.compliance is not none %}
+        <div class="fw-bold fs-3
+          {% if metrics.compliance >= 80 %}text-success
+          {% elif metrics.compliance >= 60 %}text-warning
+          {% else %}text-danger{% endif %}">
+          {{ metrics.compliance }}%
+        </div>
+        <div class="text-muted" style="font-size:0.75rem;">
+          直近 {{ metrics.compliance_n }} 件を集計
+        </div>
+        {% else %}
+        <div class="fw-bold fs-3 text-muted">─</div>
+        <div class="text-muted" style="font-size:0.75rem;">データ蓄積中</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+<!-- ---- KPI詳細モーダル ---- -->
+
+<!-- 点検ベース稼働率 -->
+<div class="modal fade" id="modalAvailability" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-bar-chart-line me-2 text-success"></i>点検ベース稼働率</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <dt class="col-4 text-muted">計算式</dt>
+          <dd class="col-8">正常件数 ÷ 定期点検総件数 × 100</dd>
+
+          <dt class="col-4 text-muted">今回の値</dt>
+          <dd class="col-8">
+            {{ metrics.normal_count }} ÷ {{ metrics.total }} × 100
+            = <strong>{{ metrics.availability }}%</strong>
+          </dd>
+
+          <dt class="col-4 text-muted">集計対象</dt>
+          <dd class="col-8">
+            定期点検記録 {{ metrics.total }} 件<br>
+            <span class="text-muted" style="font-size:0.8rem;">
+              全点検履歴のうち、前回点検から設定間隔の40%以上を空けた記録のみ対象。
+              日常的な稼働監視（日次・週次モニタリング）は除外。
+            </span>
+          </dd>
+
+          <dt class="col-4 text-muted">判定基準</dt>
+          <dd class="col-8">
+            <span class="badge bg-success">80%以上</span> 良好
+            <span class="badge bg-warning text-dark">60%以上</span> 注意
+            <span class="badge bg-danger">60%未満</span> 要対策
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 点検遵守率 -->
+<div class="modal fade" id="modalCompliance" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-calendar-check me-2 text-primary"></i>点検遵守率</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <dt class="col-4 text-muted">計算式</dt>
+          <dd class="col-8">期限内完了件数 ÷ 集計対象件数 × 100</dd>
+
+          <dt class="col-4 text-muted">今回の値</dt>
+          <dd class="col-8">
+            {% if metrics.compliance is not none %}
+            集計対象 {{ metrics.compliance_n }} 件 → <strong>{{ metrics.compliance }}%</strong>
+            {% else %}
+            集計対象データなし
+            {% endif %}
+          </dd>
+
+          <dt class="col-4 text-muted">期限日の決め方</dt>
+          <dd class="col-8">
+            各点検の「期待される実施日」を次の順で決定する。<br>
+            ① 点検登録時に記録された期限日があればその値を使用<br>
+            ② なければ前回点検日＋設定間隔（{{ scheduled_days }}日）で補完<br>
+            ③ 最初の1件目は比較基準がないため除外
+          </dd>
+
+          <dt class="col-4 text-muted">判定方法</dt>
+          <dd class="col-8">
+            実施日 ≤ 期限日 → 遵守<br>
+            実施日 &gt; 期限日 → 超過
+          </dd>
+
+          <dt class="col-4 text-muted">判定基準</dt>
+          <dd class="col-8">
+            <span class="badge bg-success">80%以上</span> 良好
+            <span class="badge bg-warning text-dark">60%以上</span> 注意
+            <span class="badge bg-danger">60%未満</span> 要対策
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+{% if chart_labels_json != '[]' %}
+<!-- 分析チャートセクション -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">
+      <i class="bi bi-graph-up me-1 text-primary"></i>点検状態分析
+    </h5>
+    <span class="text-muted small">定期点検のみ（モニタリング記録を除外）</span>
+  </div>
+  <div class="card-body">
+
+
+
+    <!-- Chart④：点検間隔トレンド -->
+    <p class="text-muted small mb-1 fw-semibold">点検間隔トレンド（日数粒度）</p>
+
+    <div class="d-flex gap-3 mb-2 flex-wrap align-items-center">
+      <span class="badge bg-secondary">設定間隔 {{ scheduled_days }}日</span>
+      <span class="ms-auto small text-muted">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(25,135,84,0.9);"></span> 遵守
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(220,53,69,0.9);margin-left:6px;"></span> 超過
+      </span>
+    </div>
+
+    <div style="height:220px;">
+      <canvas id="intervalChart"></canvas>
+    </div>
+
+  </div>
+</div>
+{% endif %}
+
+<!-- 点検記録一覧（新しい順） -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white py-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="mb-0">
+        <i class="bi bi-clipboard-data me-1"></i>点検記録一覧
+      </h5>
+      <small class="text-muted" id="irResultCount"></small>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <div>
+        <label class="form-label small text-muted mb-1">ステータス</label>
+        <select id="irFilterStatus" class="form-select form-select-sm" style="width:130px;">
+          <option value="">すべて</option>
+          <option value="normal">異常なし</option>
+          <option value="watch">要観察</option>
+          <option value="repair">要修理</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label small text-muted mb-1">実施者</label>
+        <input type="text" id="irFilterEngineer" class="form-control form-control-sm"
+               style="width:150px;" placeholder="氏名で検索">
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="irResetBtn">
+        リセット<i class="bi bi-x-lg ms-1"></i>
+      </button>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    {% if inspection_records %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" id="irTable">
+        <thead class="table-light">
+          <tr>
+            <th class="sortable-th" data-sort="date">
+              点検実施日 <i class="bi bi-arrow-down sort-icon active" id="irSortIconDate"></i>
+            </th>
+            <th class="sortable-th" data-sort="status">
+              点検ステータス <i class="bi bi-arrow-down-up sort-icon" id="irSortIconStatus"></i>
+            </th>
+            <th>実施者</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for record in inspection_records %}
+          <tr data-date="{{ record.inspected_at.strftime('%Y%m%d') if record.inspected_at else '00000000' }}"
+              data-status="{{ record.status }}"
+              data-engineer="{{ record.engineer_name or '' }}">
+            <td>{{ record.inspected_at }}</td>
+
+            <!-- 点検ステータスバッジ -->
+            <td>
+              {% if record.status == 'normal' %}
+              <span class="badge bg-success">異常なし</span>
+              {% elif record.status == 'watch' %}
+              <span class="badge bg-warning text-dark">要観察</span>
+              {% elif record.status == 'repair' %}
+              <span class="badge bg-danger">要修理</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {{ record.engineer_name }}
+              {% if record.engineer_deleted %}
+              <span class="badge bg-secondary ms-1" style="font-size:0.7em;">削除済</span>
+              {% endif %}
+            </td>
+            <td>{{ record.note if record.note else '─' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <!-- 点検記録ページネーション -->
+    <div class="text-center mt-2 px-3 pb-2">
+      <small class="text-muted d-block mb-1" id="irPageInfo"></small>
+      <div id="irPagination"></div>
     </div>
     {% else %}
+    <!-- 点検記録がない場合 -->
     <div class="text-center text-muted py-4">
       <i class="bi bi-clipboard display-4"></i>
-      <p class="mt-2">点検・修理記録がありません。</p>
+      <p class="mt-2">まだ点検記録がありません。</p>
     </div>
     {% endif %}
   </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+{% if chart_labels_json != '[]' %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+var labels        = {{ chart_labels_json | safe }};
+var intervalVals  = {{ interval_values_json | safe }};
+var intervalOver  = {{ interval_over_scheduled_json | safe }};
+var scheduledDays = {{ scheduled_days }};
+
+// ---- Chart④：点検間隔トレンド + 移動平均 ----
+(function () {
+  var ctx = document.getElementById('intervalChart');
+  if (!ctx) return;
+
+  // 各点の色：超過=赤、遵守=緑、1件目（比較不可）=グレー
+  var pointColors = intervalOver.map(function(v) {
+    if (v === null) return 'rgba(108,117,125,0.5)';
+    return v ? 'rgba(220,53,69,0.9)' : 'rgba(25,135,84,0.9)';
+  });
+
+  var scheduledLine = labels.map(function() { return scheduledDays; });
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: '設定間隔（' + scheduledDays + '日）',
+          data: scheduledLine,
+          borderColor: 'rgba(108,117,125,0.5)',
+          borderDash: [6, 4],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: '実際の間隔（日数）',
+          data: intervalVals,
+          borderColor: 'rgba(13,110,253,0.5)',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: pointColors,
+          pointBorderColor: pointColors,
+          fill: false,
+          tension: 0.1,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: { size: 11 },
+            filter: function(item) { return true; }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              if (ctx.raw === null) return null;
+              var text = ctx.dataset.label + ': ' + ctx.raw + '日';
+              // 実際の間隔データのみ遵守/超過を付加する
+              if (ctx.dataset.label === '実際の間隔（日数）') {
+                var flag = intervalOver[ctx.dataIndex];
+                if (flag === true)  text += '　▲超過';
+                if (flag === false) text += '　✓遵守';
+              }
+              return text;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          title: { display: true, text: '日数' },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { font: { size: 11 } }
+        },
+        x: {
+          ticks: { maxRotation: 45, font: { size: 10 } },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+
+<script>
+(function () {
+  var PAGE_SIZE = 20;
+  var currentPage = 1;
+  var sortKey = 'date';
+  var sortAsc = false;
+  var STATUS_ORDER = { normal: 0, watch: 1, repair: 2 };
+
+  function getRows() {
+    var tbody = document.querySelector('#irTable tbody');
+    return tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+  }
+
+  function applyFilters() {
+    var status   = (document.getElementById('irFilterStatus')   || {value: ''}).value;
+    var engineer = (document.getElementById('irFilterEngineer') || {value: ''}).value.trim().toLowerCase();
+    getRows().forEach(function (row) {
+      var matchStatus   = !status   || row.getAttribute('data-status') === status;
+      var matchEngineer = !engineer || (row.getAttribute('data-engineer') || '').toLowerCase().includes(engineer);
+      row.classList.toggle('filter-hidden', !(matchStatus && matchEngineer));
+    });
+    currentPage = 1;
+    renderPage();
+  }
+
+  function getFilteredRows() {
+    return getRows().filter(function (r) { return !r.classList.contains('filter-hidden'); });
+  }
+
+  function renderPage() {
+    var rows  = getFilteredRows();
+    var total = rows.length;
+    var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = 1;
+    var start = (currentPage - 1) * PAGE_SIZE;
+    var end   = start + PAGE_SIZE;
+    rows.forEach(function (row, i) {
+      row.classList.toggle('page-hidden', i < start || i >= end);
+    });
+    var infoEl = document.getElementById('irPageInfo');
+    if (infoEl) {
+      infoEl.textContent = total === 0 ? '0 件'
+        : '全 ' + total + ' 件中 ' + (start + 1) + '〜' + Math.min(end, total) + ' 件表示';
+    }
+    var countEl = document.getElementById('irResultCount');
+    if (countEl) countEl.textContent = total + ' 件';
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages) {
+    var container = document.getElementById('irPagination');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+    var pages = [1];
+    if (currentPage - 1 > 2) pages.push('...');
+    for (var p = Math.max(2, currentPage - 1); p <= Math.min(totalPages - 1, currentPage + 1); p++) {
+      pages.push(p);
+    }
+    if (currentPage + 1 < totalPages - 1) pages.push('...');
+    if (totalPages > 1) pages.push(totalPages);
+    var html = '<nav><ul class="pagination pagination-sm justify-content-center mb-0">';
+    html += '<li class="page-item' + (currentPage === 1 ? ' disabled' : '') + '">';
+    html += '<button class="page-link" data-page="' + (currentPage - 1) + '">←</button></li>';
+    pages.forEach(function (pg) {
+      if (pg === '...') {
+        html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+      } else {
+        html += '<li class="page-item' + (pg === currentPage ? ' active' : '') + '">';
+        html += '<button class="page-link" data-page="' + pg + '">' + pg + '</button></li>';
+      }
+    });
+    html += '<li class="page-item' + (currentPage === totalPages ? ' disabled' : '') + '">';
+    html += '<button class="page-link" data-page="' + (currentPage + 1) + '">→</button></li>';
+    html += '</ul></nav>';
+    container.innerHTML = html;
+    container.querySelectorAll('button[data-page]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var pg = parseInt(this.getAttribute('data-page'));
+        if (pg >= 1 && pg <= totalPages) { currentPage = pg; renderPage(); }
+      });
+    });
+  }
+
+  function sortTable(key) {
+    if (sortKey === key) {
+      sortAsc = !sortAsc;
+    } else {
+      sortKey = key;
+      sortAsc = (key === 'status');
+    }
+    document.querySelectorAll('#irTable .sort-icon').forEach(function (icon) {
+      icon.className = 'bi bi-arrow-down-up sort-icon';
+    });
+    var iconId = key === 'date' ? 'irSortIconDate' : 'irSortIconStatus';
+    var activeIcon = document.getElementById(iconId);
+    if (activeIcon) {
+      activeIcon.className = 'bi bi-arrow-' + (sortAsc ? 'up' : 'down') + ' sort-icon active';
+    }
+    var tbody = document.querySelector('#irTable tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort(function (a, b) {
+      var av, bv;
+      if (key === 'date') {
+        av = a.getAttribute('data-date') || '';
+        bv = b.getAttribute('data-date') || '';
+      } else {
+        av = STATUS_ORDER[a.getAttribute('data-status')] !== undefined ? STATUS_ORDER[a.getAttribute('data-status')] : 9;
+        bv = STATUS_ORDER[b.getAttribute('data-status')] !== undefined ? STATUS_ORDER[b.getAttribute('data-status')] : 9;
+      }
+      if (av < bv) return sortAsc ? -1 : 1;
+      if (av > bv) return sortAsc ? 1 : -1;
+      return 0;
+    });
+    rows.forEach(function (r) { tbody.appendChild(r); });
+    currentPage = 1;
+    renderPage();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    renderPage();
+    var statusEl   = document.getElementById('irFilterStatus');
+    var engineerEl = document.getElementById('irFilterEngineer');
+    var resetBtn   = document.getElementById('irResetBtn');
+    if (statusEl) statusEl.addEventListener('change', applyFilters);
+    if (engineerEl) {
+      var timer;
+      engineerEl.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(applyFilters, 200);
+      });
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        if (statusEl)   statusEl.value = '';
+        if (engineerEl) engineerEl.value = '';
+        applyFilters();
+      });
+    }
+    document.querySelectorAll('#irTable th[data-sort]').forEach(function (th) {
+      th.addEventListener('click', function () { sortTable(this.getAttribute('data-sort')); });
+    });
+  });
+})();
+</script>
 {% endblock %}
