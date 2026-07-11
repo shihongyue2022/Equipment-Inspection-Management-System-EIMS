@@ -8,5 +8,6 @@ services:
       DB_NAME: ${DB_NAME:-inspection_db}
       DB_SSL: ${DB_SSL:-true}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+      FLASK_APP: wsgi.py
       FLASK_DEBUG: 0
     depends_on: !reset []

@@ -3,80 +3,215 @@
 {% block title %}アカウント一覧 - 設備点検管理システム{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0">
-    <i class="bi bi-people me-2 text-primary"></i>アカウント一覧
-  </h2>
-  <!-- 新規登録ボタン -->
-  <a href="{{ url_for('accounts.new_get') }}" class="btn btn-primary">
-    <i class="bi bi-person-plus me-1"></i>新規登録
-  </a>
+<style>
+  /* テーブル列ヘッダーを上部に固定する */
+  #accountTable thead th {
+    position: sticky;
+    z-index: 2;
+    background: #f8f9fa;
+  }
+  /* clip にして scroll container を解除する */
+  #accountTableWrapper {
+    overflow-x: clip;
+  }
+  /* フィルターで非表示になった行 */
+  .filter-hidden { display: none; }
+  /* ページネーションで非表示になった行 */
+  .page-hidden   { display: none; }
+  /* ソート可能なヘッダー */
+  .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
+  .sortable-th:hover { background: #e9ecef !important; }
+  .sort-icon { font-size: 0.7rem; color: #adb5bd; margin-left: 3px; }
+  .sort-icon.active { color: #0d6efd; }
+</style>
+
+<!-- タイトルと検索フォームをまとめてスクロール時上部に固定する -->
+<div id="stickyHeader" style="position: sticky; top: 0; z-index: 100; background: #f8f9fa; padding-bottom: 0.75rem;">
+
+  <!-- ページタイトル行 -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">
+      <i class="bi bi-people me-2 text-primary"></i>アカウント一覧
+    </h2>
+    <a href="{{ url_for('account_new_get') }}" class="btn btn-primary">
+      <i class="bi bi-person-plus me-1"></i>新規登録
+    </a>
+  </div>
+
+  <!-- 検索・絞り込みフォーム -->
+  <div id="filterCard" class="card border-0 shadow-sm">
+    <div class="card-body py-3">
+      <form method="GET" action="{{ url_for('account_list_get') }}" onsubmit="return false;">
+        <div class="d-flex flex-wrap gap-3 align-items-end">
+
+          <!-- 氏名・社員番号キーワード検索 -->
+          <div>
+            <label for="keyword" class="form-label small text-muted mb-1">氏名 / 社員番号</label>
+            <input type="text" id="keyword" name="keyword"
+                   class="form-control" style="width: 200px;"
+                   placeholder="例: 山田 / ENG-001"
+                   value="{{ keyword }}">
+          </div>
+
+          <!-- ロール絞り込み -->
+          <div>
+            <label for="role" class="form-label small text-muted mb-1">ロール</label>
+            <select id="role" name="role" class="form-select" style="width: 120px;">
+              <option value="">すべて</option>
+              <option value="root"     {% if selected_role == 'root'     %}selected{% endif %}>ROOT</option>
+              <option value="admin"    {% if selected_role == 'admin'    %}selected{% endif %}>管理者</option>
+              <option value="engineer" {% if selected_role == 'engineer' %}selected{% endif %}>FE</option>
+            </select>
+          </div>
+
+          <!-- 拠点絞り込み -->
+          <div>
+            <label for="base" class="form-label small text-muted mb-1">拠点</label>
+            <select id="base" name="base" class="form-select" style="width: 140px;">
+              <option value="">すべて</option>
+              {% for b in base_list %}
+              <option value="{{ b }}" {% if selected_base == b %}selected{% endif %}>{{ b }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- リセットボタン -->
+          <div class="ms-auto">
+            <button type="button" class="btn btn-outline-secondary" id="resetFilterBtn">
+              リセット<i class="bi bi-x-lg ms-1"></i>
+            </button>
+          </div>
+
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 一括操作バー：1件以上選択したときに表示する -->
+  <div id="bulk-action-bar" class="alert alert-primary d-flex align-items-center gap-3 py-2 d-none mt-3 mb-0" role="alert">
+  <i class="bi bi-check2-square fs-5"></i>
+  <span class="fw-semibold"><span id="selected-count">0</span> 件選択中</span>
+  <button type="button" class="btn btn-sm btn-primary ms-2"
+          data-bs-toggle="modal" data-bs-target="#bulkEditModal">
+    <i class="bi bi-pencil-square me-1"></i>一括編集
+  </button>
+  <!-- 同じ属性で選択ドロップダウン -->
+  <div class="dropdown">
+    <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+            data-bs-toggle="dropdown">
+      <i class="bi bi-intersect me-1"></i>同じ属性で選択
+    </button>
+    <ul class="dropdown-menu">
+      <li><h6 class="dropdown-header">最初に選択した行の値と一致する行を全選択</h6></li>
+      <li><button class="dropdown-item" type="button" onclick="selectSimilar('role')">
+        <i class="bi bi-shield me-2"></i>同じロール
+      </button></li>
+      <li><button class="dropdown-item" type="button" onclick="selectSimilar('base')">
+        <i class="bi bi-building me-2"></i>同じ拠点
+      </button></li>
+    </ul>
+  </div>
+  <button type="button" class="btn btn-sm btn-outline-danger ms-auto"
+          data-bs-toggle="modal" data-bs-target="#bulkDeleteModal">
+    <i class="bi bi-trash me-1"></i>一括削除
+  </button>
+  <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-selection-btn">
+    <i class="bi bi-x me-1"></i>選択解除
+  </button>
 </div>
+</div><!-- /stickyHeader -->
+
+<!-- 検索結果件数 -->
+<p class="text-muted small mb-2 mt-2" id="resultCount">{{ user_list | length }} 件</p>
+
+<!-- 直前の一括編集を元に戻すバナー -->
+{% if session.get('last_account_bulk_edit') %}
+<div class="alert alert-warning d-flex align-items-center gap-3 mb-3" role="alert">
+  <i class="bi bi-arrow-counterclockwise fs-5"></i>
+  <span>直前の一括編集（<strong>{{ session['last_account_bulk_edit']['count'] }}件</strong>）を元に戻すことができます。</span>
+  <form method="POST" action="{{ url_for('account_bulk_revert_post') }}" class="ms-auto">
+    {{ form.hidden_tag() }}
+    <button type="submit" class="btn btn-sm btn-warning">
+      <i class="bi bi-arrow-counterclockwise me-1"></i>元に戻す
+    </button>
+  </form>
+</div>
+{% endif %}
 
 <!-- アカウント一覧テーブル -->
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-white py-3">
-    <form method="get" action="{{ url_for('accounts.list_get') }}" class="management-filter-form">
-      <div class="management-filter-search">
-        <input type="search" name="q" class="form-control form-control-sm"
-               value="{{ keyword or '' }}" placeholder="氏名・社員番号・メールを検索">
-        <button type="submit" class="btn btn-sm btn-primary">検索</button>
-      </div>
-      <select name="role" class="form-select form-select-sm" aria-label="ロール" onchange="this.form.submit()">
-        <option value="">全ロール</option>
-        {% for option in filter_options.roles %}
-        <option value="{{ option.value }}" {% if selected_role == option.value %}selected{% endif %}>{{ option.label }}（{{ option.count }}）</option>
-        {% endfor %}
-      </select>
-      <select name="base" class="form-select form-select-sm" aria-label="拠点" onchange="this.form.submit()">
-        <option value="">全拠点</option>
-        {% for option in filter_options.bases %}
-        <option value="{{ option.value }}" {% if selected_base == option.value %}selected{% endif %}>{{ option.value }}（{{ option.count }}）</option>
-        {% endfor %}
-      </select>
-      <select name="sort_by" class="form-select form-select-sm" aria-label="並び替え" onchange="this.form.submit()">
-        {% for value, label in sort_options.items() %}
-        <option value="{{ value }}" {% if selected_sort == value %}selected{% endif %}>{{ label }}順</option>
-        {% endfor %}
-      </select>
-      <select name="sort_order" class="form-select form-select-sm" aria-label="昇降順" onchange="this.form.submit()">
-        <option value="asc" {% if selected_order == 'asc' %}selected{% endif %}>昇順</option>
-        <option value="desc" {% if selected_order == 'desc' %}selected{% endif %}>降順</option>
-      </select>
-      {% if active_filter_count %}
-      <a href="{{ url_for('accounts.list_get') }}" class="btn btn-sm btn-ghost-secondary">条件をクリア</a>
-      {% endif %}
-    </form>
-    <div class="text-muted small mt-2">{{ pagination.total }} 件一致・{{ pagination.page }} / {{ pagination.pages or 1 }} ページ</div>
-  </div>
   <div class="card-body p-0">
     {% if user_list %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
+    <div class="table-responsive" id="accountTableWrapper">
+      <table class="table table-hover mb-0" id="accountTable" style="table-layout: fixed; width: 100%;">
         <thead class="table-light">
           <tr>
-            <th>氏名</th>
-            <th>社員番号</th>
-            <th>メールアドレス</th>
-            <th>ロール</th>
-            <th>拠点</th>
-            <th class="text-center">操作</th>
+            <!-- 全選択チェックボックス＋選択モードドロップダウン -->
+            <th style="width: 4%;">
+              <div class="d-flex align-items-center gap-1">
+                <input type="checkbox" id="select-all" class="form-check-input" title="このページを全選択">
+                <div class="dropdown">
+                  <button class="btn btn-link btn-sm p-0 text-secondary" type="button"
+                          data-bs-toggle="dropdown" title="選択オプション">
+                    <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-start" style="min-width:220px;">
+                    <li>
+                      <button class="dropdown-item small" id="select-page-btn" type="button">
+                        <i class="bi bi-check2-square me-1"></i>このページを全選択
+                      </button>
+                    </li>
+                    <li>
+                      <button class="dropdown-item small" id="select-all-filtered-btn" type="button">
+                        <i class="bi bi-check2-all me-1"></i>条件一致をすべて選択
+                        （<span id="filtered-total-count">0</span>件）
+                      </button>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                      <button class="dropdown-item small text-danger" id="deselect-all-btn" type="button">
+                        <i class="bi bi-x-square me-1"></i>すべての選択を解除
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </th>
+            <th class="sortable-th" data-sort="name" style="width: 17%;">
+              氏名 <i class="bi bi-arrow-down-up sort-icon" id="sort-icon-name"></i>
+            </th>
+            <th class="sortable-th" data-sort="employeeNo" style="width: 14%;">
+              社員番号 <i class="bi bi-arrow-down-up sort-icon" id="sort-icon-employeeNo"></i>
+            </th>
+            <th style="width: 30%;">メールアドレス</th>
+            <th class="sortable-th" data-sort="role" style="width: 10%;">
+              ロール <i class="bi bi-arrow-down-up sort-icon" id="sort-icon-role"></i>
+            </th>
+            <th class="sortable-th" data-sort="base" style="width: 14%;">
+              拠点 <i class="bi bi-arrow-down-up sort-icon" id="sort-icon-base"></i>
+            </th>
+            <th class="text-center" style="width: 11%;">操作</th>
           </tr>
         </thead>
         <tbody>
           {% for user in user_list %}
-          <tr>
-            <!-- 氏名（クリックで詳細へ） -->
+          <tr data-name="{{ user.full_name }}"
+              data-employee-no="{{ user.employee_no }}"
+              data-role="{{ user.role }}"
+              data-base="{{ user.base or '' }}">
             <td>
-              <a href="{{ url_for('accounts.detail_get', user_id=user.id) }}"
+              {% if user.id != session['user']['id'] %}
+              <input type="checkbox" class="form-check-input row-checkbox" value="{{ user.id }}">
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('account_detail_get', id=user.id) }}"
                  class="text-decoration-none fw-semibold">
                 {{ user.full_name }}
               </a>
             </td>
             <td>{{ user.employee_no }}</td>
             <td>{{ user.email }}</td>
-
-            <!-- ロールバッジ -->
             <td>
               {% if user.role == 'root' %}
               <span class="badge bg-danger">ROOT</span>
@@ -86,12 +221,9 @@
               <span class="badge bg-info">FE</span>
               {% endif %}
             </td>
-
             <td>{{ user.base if user.base else '─' }}</td>
-
-            <!-- 操作ボタン -->
             <td class="text-center">
-              <a href="{{ url_for('accounts.detail_get', user_id=user.id) }}"
+              <a href="{{ url_for('account_detail_get', id=user.id) }}"
                  class="btn btn-sm btn-outline-secondary">
                 <i class="bi bi-person-lines-fill"></i> 詳細
               </a>
@@ -101,32 +233,510 @@
         </tbody>
       </table>
     </div>
+
+    <!-- ページネーション -->
+    <div class="text-center mt-3 px-3 pb-2">
+      <small class="text-muted d-block mb-1" id="pageInfo"></small>
+      <div id="pagination-container"></div>
+    </div>
+
     {% else %}
-    <!-- ユーザーがない場合 -->
     <div class="text-center text-muted py-5">
-      <i class="bi bi-people display-4"></i>
-      <p class="mt-2">アカウントが登録されていません。</p>
-      <a href="{{ url_for('accounts.new_get') }}" class="btn btn-primary mt-2">
-        <i class="bi bi-person-plus me-1"></i>新規登録する
+      <i class="bi bi-search display-4"></i>
+      <p class="mt-2">条件に一致するアカウントが見つかりません。</p>
+      <a href="{{ url_for('account_list_get') }}" class="btn btn-outline-secondary mt-2">
+        <i class="bi bi-x-circle me-1"></i>検索条件をリセット
       </a>
     </div>
     {% endif %}
   </div>
-  {% if pagination.pages > 1 %}
-  <div class="card-footer bg-white">
-    <nav aria-label="アカウント一覧ページ">
-      <ul class="pagination pagination-sm justify-content-end mb-0">
-        {% for page_number in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-          {% if page_number %}
-          <li class="page-item{% if page_number == pagination.page %} active{% endif %}">
-            <a class="page-link" href="{{ url_for('accounts.list_get', page=page_number, q=keyword, role=selected_role, base=selected_base, sort_by=selected_sort, sort_order=selected_order) }}">{{ page_number }}</a>
-          </li>
-          {% else %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
-        {% endfor %}
-      </ul>
-    </nav>
-  </div>
-  {% endif %}
 </div>
 
+<!-- ===== 一括編集モーダル ===== -->
+<div class="modal fade" id="bulkEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-pencil-square me-2 text-primary"></i>一括編集
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('account_bulk_edit_post') }}">
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="user_ids" id="bulk-user-ids">
+        <div class="modal-body">
+          <div class="alert alert-info py-2 mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            <strong><span id="bulk-target-count">0</span> 件</strong>のアカウントが対象です。
+            <span class="text-muted">入力した項目のみ上書きされます。</span>
+          </div>
+          {% if session['user']['role'] == 'admin' %}
+          <div class="alert alert-warning py-2 mb-3">
+            <i class="bi bi-shield-exclamation me-1"></i>
+            ROOT・管理者アカウントは対象から自動的に除外されます。
+          </div>
+          {% endif %}
+          <div class="row g-3">
+            <!-- ロール -->
+            <div class="col-12">
+              <label class="form-label fw-semibold">ロール</label>
+              <select name="bulk_role" class="form-select">
+                <option value="">変更しない</option>
+                {% if session['user']['role'] == 'root' %}
+                <option value="admin">管理者</option>
+                {% endif %}
+                <option value="engineer">FE</option>
+              </select>
+            </div>
+            <!-- 拠点 -->
+            <div class="col-12">
+              <label class="form-label fw-semibold">拠点</label>
+              <select name="bulk_base" class="form-select">
+                <option value="">変更しない</option>
+                <option value="__clear__">─（拠点なしにする）</option>
+                {% for b in base_list %}
+                <option value="{{ b }}">{{ b }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-circle me-1"></i>選択中のアカウントを更新
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 一括削除確認モーダル ===== -->
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">
+          <i class="bi bi-trash me-2"></i>一括削除の確認
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="bulkDeleteForm" method="POST" action="{{ url_for('account_bulk_delete_post') }}">
+        {{ form.hidden_tag() }}
+        <input type="hidden" name="user_ids" id="bulk-delete-user-ids">
+        <div class="modal-body">
+          <p>選択した <strong><span id="bulk-delete-count">0</span> 件</strong> のアカウントをゴミ箱に送りますか？</p>
+          {% if session['user']['role'] == 'admin' %}
+          <p class="text-muted small mb-0">
+            <i class="bi bi-info-circle me-1"></i>ROOT・管理者アカウントは対象から自動的に除外されます。
+          </p>
+          {% else %}
+          <p class="text-muted small mb-0">
+            <i class="bi bi-info-circle me-1"></i>ゴミ箱から復元することができます。
+          </p>
+          {% endif %}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash me-1"></i>ゴミ箱に送る
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ページトップへ戻るボタン -->
+<button id="scrollTopBtn" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })" title="ページトップへ戻る" style="
+    display: none;
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 9999;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: #4F46E5;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.2s;
+  ">
+  <i class="bi bi-arrow-up"></i>
+</button>
+<script>
+  (function () {
+    var btn = document.getElementById("scrollTopBtn");
+    window.addEventListener("scroll", function () {
+      btn.style.display = window.scrollY > 300 ? "block" : "none";
+    });
+  })();
+</script>
+
+<!-- 一括削除中ローディングオーバーレイ -->
+<div id="bulkDeleteOverlay" style="display:none; position:fixed; inset:0;
+     background:rgba(0,0,0,0.6); z-index:10000;
+     align-items:center; justify-content:center;">
+  <div class="text-center text-white px-4">
+    <div class="spinner-border mb-3" style="width:3rem; height:3rem;" role="status">
+      <span class="visually-hidden">処理中...</span>
+    </div>
+    <p class="mb-2 fs-5 fw-semibold">削除処理中です</p>
+    <p class="mb-3 small text-white-50">しばらくお待ちください...</p>
+    <div class="progress" style="width:280px; height:8px;">
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger"
+           style="width:100%"></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ===== スティッキーヘッダー高さに合わせてテーブルヘッダーの固定位置を設定する =====
+  function setTableHeaderOffset() {
+    var stickyHeader = document.getElementById('stickyHeader');
+    if (!stickyHeader) return;
+    var h = stickyHeader.offsetHeight;
+    document.querySelectorAll('#accountTable thead th').forEach(function (th) {
+      th.style.top = h + 'px';
+    });
+  }
+
+  // ===== ページネーション =====
+  var PAGE_SIZE   = 20;
+  var currentPage = 1;
+
+  function getFilteredRows() {
+    return Array.from(document.querySelectorAll('#accountTable tbody tr')).filter(function (r) {
+      return !r.classList.contains('filter-hidden');
+    });
+  }
+
+  function renderPage() {
+    var filtered   = getFilteredRows();
+    var totalCount = filtered.length;
+    var totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    var start = (currentPage - 1) * PAGE_SIZE;
+    var end   = start + PAGE_SIZE;
+
+    document.querySelectorAll('#accountTable tbody tr').forEach(function (row) {
+      if (row.classList.contains('filter-hidden')) return;
+      var idx = filtered.indexOf(row);
+      row.classList.toggle('page-hidden', idx < start || idx >= end);
+    });
+
+    var pageInfoEl = document.getElementById('pageInfo');
+    if (pageInfoEl) {
+      pageInfoEl.textContent = totalCount === 0
+        ? '0 件'
+        : '全 ' + totalCount + ' 件中 ' + (start + 1) + '〜' + Math.min(end, totalCount) + ' 件表示';
+    }
+
+    var countEl = document.getElementById('resultCount');
+    if (countEl) countEl.textContent = totalCount + ' 件';
+
+    var filteredTotalEl = document.getElementById('filtered-total-count');
+    if (filteredTotalEl) filteredTotalEl.textContent = totalCount;
+
+    renderPagination(totalPages);
+    updateBulkBar();
+  }
+
+  function renderPagination(totalPages) {
+    var container = document.getElementById('pagination-container');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    var pages = [];
+    if (totalPages <= 7) {
+      for (var i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push('...');
+      var from = Math.max(2, currentPage - 1);
+      var to   = Math.min(totalPages - 1, currentPage + 1);
+      for (var i = from; i <= to; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+
+    var html = '<nav><ul class="pagination pagination-sm mb-0">';
+    html += '<li class="page-item' + (currentPage === 1 ? ' disabled' : '') + '">';
+    html += '<a class="page-link" href="#" data-page="' + (currentPage - 1) + '">&#8592;</a></li>';
+    pages.forEach(function (p) {
+      if (p === '...') {
+        html += '<li class="page-item disabled"><span class="page-link">…</span></li>';
+      } else {
+        html += '<li class="page-item' + (p === currentPage ? ' active' : '') + '">';
+        html += '<a class="page-link" href="#" data-page="' + p + '">' + p + '</a></li>';
+      }
+    });
+    html += '<li class="page-item' + (currentPage === totalPages ? ' disabled' : '') + '">';
+    html += '<a class="page-link" href="#" data-page="' + (currentPage + 1) + '">&#8594;</a></li>';
+    html += '</ul></nav>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('[data-page]').forEach(function (link) {
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        var page = parseInt(this.dataset.page);
+        if (page >= 1 && page <= totalPages) {
+          currentPage = page;
+          renderPage();
+          var table = document.getElementById('accountTable');
+          if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  }
+
+  // ===== フィルタリング =====
+  function applyFilters() {
+    var keyword = document.getElementById('keyword').value.trim().toLowerCase();
+    var role    = document.getElementById('role').value;
+    var base    = document.getElementById('base').value;
+
+    document.querySelectorAll('#accountTable tbody tr').forEach(function (row) {
+      var keywordMatch = !keyword ||
+        row.dataset.name.toLowerCase().includes(keyword) ||
+        row.dataset.employeeNo.toLowerCase().includes(keyword);
+      var roleMatch = !role || row.dataset.role === role;
+      var baseMatch = !base || row.dataset.base === base;
+      row.classList.toggle('filter-hidden', !(keywordMatch && roleMatch && baseMatch));
+      if (row.classList.contains('filter-hidden')) {
+        var cb = row.querySelector('.row-checkbox');
+        if (cb) cb.checked = false;
+      }
+    });
+
+    currentPage = 1;
+    renderPage();
+  }
+
+  function resetFilters() {
+    document.getElementById('keyword').value = '';
+    document.getElementById('role').value    = '';
+    document.getElementById('base').value    = '';
+    applyFilters();
+  }
+
+  // ===== ソート =====
+  var sortState = { key: null, asc: true };
+
+  var ROLE_ORDER = { 'root': 0, 'admin': 1, 'engineer': 2 };
+
+  function sortTable(key) {
+    var tbody = document.querySelector('#accountTable tbody');
+    var rows  = Array.from(tbody.querySelectorAll('tr'));
+
+    if (sortState.key === key) {
+      sortState.asc = !sortState.asc;
+    } else {
+      sortState.key = key;
+      sortState.asc = true;
+    }
+
+    rows.sort(function (a, b) {
+      var aVal = a.dataset[key] || '';
+      var bVal = b.dataset[key] || '';
+      // ロールは順序定義で比較する
+      if (key === 'role') {
+        aVal = ROLE_ORDER[aVal] !== undefined ? ROLE_ORDER[aVal] : 99;
+        bVal = ROLE_ORDER[bVal] !== undefined ? ROLE_ORDER[bVal] : 99;
+        return sortState.asc ? aVal - bVal : bVal - aVal;
+      }
+      var cmp = aVal.localeCompare(bVal, 'ja');
+      return sortState.asc ? cmp : -cmp;
+    });
+
+    rows.forEach(function (r) { tbody.appendChild(r); });
+
+    // ソートアイコンを更新する
+    document.querySelectorAll('.sort-icon').forEach(function (icon) {
+      icon.className = 'bi bi-arrow-down-up sort-icon';
+    });
+    var activeIcon = document.getElementById('sort-icon-' + key);
+    if (activeIcon) {
+      activeIcon.className = (sortState.asc ? 'bi bi-arrow-up sort-icon active' : 'bi bi-arrow-down sort-icon active');
+    }
+
+    currentPage = 1;
+    renderPage();
+  }
+
+  // ===== 一括操作バー更新 =====
+  var selectAllCheckbox = null;
+
+  function updateBulkBar() {
+    var totalChecked = document.querySelectorAll('.row-checkbox:checked').length;
+    var currentPageBoxes = document.querySelectorAll(
+      '#accountTable tbody tr:not(.filter-hidden):not(.page-hidden) .row-checkbox'
+    );
+    var currentPageTotal   = currentPageBoxes.length;
+    var currentPageChecked = Array.from(currentPageBoxes).filter(function (cb) { return cb.checked; }).length;
+
+    var bar     = document.getElementById('bulk-action-bar');
+    var countEl = document.getElementById('selected-count');
+    if (countEl) countEl.textContent = totalChecked;
+    if (bar) {
+      if (totalChecked > 0) bar.classList.remove('d-none');
+      else                  bar.classList.add('d-none');
+    }
+    if (selectAllCheckbox) {
+      selectAllCheckbox.checked       = (currentPageChecked > 0 && currentPageChecked === currentPageTotal);
+      selectAllCheckbox.indeterminate = (currentPageChecked > 0 && currentPageChecked < currentPageTotal);
+    }
+  }
+
+  // 最初にチェックされている行の data-* 属性値と一致する全行を選択する
+  function selectSimilar(attr) {
+    var firstChecked = document.querySelector('.row-checkbox:checked');
+    if (!firstChecked) return;
+    var targetRow   = firstChecked.closest('tr');
+    var targetValue = targetRow.dataset[attr] || '';
+    document.querySelectorAll('#accountTable tbody tr').forEach(function (row) {
+      var cb = row.querySelector('.row-checkbox');
+      if (!cb) return;
+      cb.checked = (row.dataset[attr] || '') === targetValue;
+    });
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    updateBulkBar();
+  }
+
+  window.selectSimilar = selectSimilar;
+
+  document.addEventListener('DOMContentLoaded', function () {
+    setTableHeaderOffset();
+    window.addEventListener('resize', setTableHeaderOffset);
+
+    // 初回表示
+    renderPage();
+
+    // テキスト入力：200ms デバウンス
+    var debounceTimer;
+    document.getElementById('keyword').addEventListener('input', function () {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(applyFilters, 200);
+    });
+    document.getElementById('role').addEventListener('change', applyFilters);
+    document.getElementById('base').addEventListener('change', applyFilters);
+    document.getElementById('resetFilterBtn').addEventListener('click', resetFilters);
+
+    // ソートヘッダーのクリックイベント
+    document.querySelectorAll('.sortable-th').forEach(function (th) {
+      th.addEventListener('click', function () {
+        sortTable(this.dataset.sort);
+      });
+    });
+
+    // 全選択チェックボックスの初期化
+    selectAllCheckbox = document.getElementById('select-all');
+
+    // 全選択チェックボックス：現在ページの行のみ対象
+    if (selectAllCheckbox) {
+      selectAllCheckbox.addEventListener('change', function () {
+        var isChecked = this.checked;
+        document.querySelectorAll(
+          '#accountTable tbody tr:not(.filter-hidden):not(.page-hidden) .row-checkbox'
+        ).forEach(function (cb) { cb.checked = isChecked; });
+        updateBulkBar();
+      });
+    }
+
+    // 「このページを全選択」ボタン
+    var selectPageBtn = document.getElementById('select-page-btn');
+    if (selectPageBtn) {
+      selectPageBtn.addEventListener('click', function () {
+        document.querySelectorAll(
+          '#accountTable tbody tr:not(.filter-hidden):not(.page-hidden) .row-checkbox'
+        ).forEach(function (cb) { cb.checked = true; });
+        updateBulkBar();
+      });
+    }
+
+    // 「条件一致をすべて選択」ボタン
+    var selectAllFilteredBtn = document.getElementById('select-all-filtered-btn');
+    if (selectAllFilteredBtn) {
+      selectAllFilteredBtn.addEventListener('click', function () {
+        document.querySelectorAll(
+          '#accountTable tbody tr:not(.filter-hidden) .row-checkbox'
+        ).forEach(function (cb) { cb.checked = true; });
+        updateBulkBar();
+      });
+    }
+
+    // 「すべての選択を解除」ボタン
+    var deselectAllBtn = document.getElementById('deselect-all-btn');
+    if (deselectAllBtn) {
+      deselectAllBtn.addEventListener('click', function () {
+        document.querySelectorAll('.row-checkbox').forEach(function (cb) { cb.checked = false; });
+        if (selectAllCheckbox) {
+          selectAllCheckbox.checked       = false;
+          selectAllCheckbox.indeterminate = false;
+        }
+        updateBulkBar();
+      });
+    }
+
+    // 各行チェックボックス
+    document.querySelectorAll('.row-checkbox').forEach(function (cb) {
+      cb.addEventListener('change', function () { updateBulkBar(); });
+    });
+
+    // 選択解除ボタン
+    var clearBtn = document.getElementById('clear-selection-btn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        document.querySelectorAll('.row-checkbox').forEach(function (cb) { cb.checked = false; });
+        if (selectAllCheckbox) {
+          selectAllCheckbox.checked       = false;
+          selectAllCheckbox.indeterminate = false;
+        }
+        updateBulkBar();
+      });
+    }
+
+    // 一括編集モーダル：IDと件数を同期する
+    var bulkEditModal = document.getElementById('bulkEditModal');
+    if (bulkEditModal) {
+      bulkEditModal.addEventListener('show.bs.modal', function () {
+        var checked = document.querySelectorAll('.row-checkbox:checked');
+        var ids = Array.from(checked).map(function (cb) { return cb.value; });
+        document.getElementById('bulk-user-ids').value       = ids.join(',');
+        document.getElementById('bulk-target-count').textContent = ids.length;
+      });
+    }
+
+    // 一括削除モーダル：IDと件数を同期する
+    var bulkDeleteModalEl = document.getElementById('bulkDeleteModal');
+    if (bulkDeleteModalEl) {
+      bulkDeleteModalEl.addEventListener('show.bs.modal', function () {
+        var checked = document.querySelectorAll('.row-checkbox:checked');
+        var ids = Array.from(checked).map(function (cb) { return cb.value; });
+        document.getElementById('bulk-delete-user-ids').value    = ids.join(',');
+        document.getElementById('bulk-delete-count').textContent = ids.length;
+      });
+    }
+
+    // 一括削除フォーム送信時にローディングオーバーレイを表示する
+    var bulkDeleteForm = document.getElementById('bulkDeleteForm');
+    if (bulkDeleteForm) {
+      bulkDeleteForm.addEventListener('submit', function () {
+        document.getElementById('bulkDeleteOverlay').style.display = 'flex';
+      });
+    }
+
+    // 初期フィルター適用
+    applyFilters();
+  });
+</script>
 {% endblock %}

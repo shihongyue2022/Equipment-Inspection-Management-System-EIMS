@@ -3,7 +3,7 @@
 {% block title %}点検記録登録 - 設備点検管理システム{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="mb-0">
     <i class="bi bi-clipboard-plus me-2 text-primary"></i>点検記録登録
   </h2>
@@ -20,29 +20,58 @@
     {% endif %}
 
     <!-- 点検記録登録フォーム -->
-    <form method="POST" action="{{ url_for('inspections.new_post') }}">
+    <form method="POST" action="{{ url_for('inspection_new_post') }}">
       <!-- CSRF対策トークン -->
-      {{ form.hidden_tag() if form else '' }}
+      {{ form.hidden_tag() }}
+      <!-- キャンセル時の戻り先をPOST後も維持するために保持する -->
+      <input type="hidden" name="back" value="{{ back }}">
 
       <div class="row g-3">
 
         <!-- 対象設備（FEは担当設備のみ選択可） -->
         <div class="col-md-12">
-          <label for="equipment_id" class="form-label">
+          <label class="form-label">
             対象設備 <span class="text-danger">*</span>
           </label>
-          <select class="form-select"
-                  id="equipment_id"
-                  name="equipment_id"
-                  required>
-            <option value="">設備を選択してください</option>
-            {% for eq in equipment_list %}
-            <option value="{{ eq.id }}"
-              {% if selected_equipment_id and selected_equipment_id == eq.id %}selected{% endif %}>
-              {{ eq.name }}（{{ eq.location }}）
-            </option>
-            {% endfor %}
-          </select>
+          <!-- フォーム送信用（選択した設備IDを保持する） -->
+          <input type="hidden"
+                 id="equipment_id"
+                 name="equipment_id"
+                 value="{{ selected_equipment_id if selected_equipment_id else '' }}">
+          <!-- 検索・選択コンボボックス -->
+          <div class="position-relative">
+            <div class="input-group">
+              <span class="input-group-text bg-white">
+                <i class="bi bi-search text-muted"></i>
+              </span>
+              <input type="text"
+                     class="form-control"
+                     id="equipment_search"
+                     placeholder="クリックして選択、または設備名で絞り込み"
+                     autocomplete="off">
+              <button type="button"
+                      class="btn btn-outline-secondary"
+                      id="equipment_clear"
+                      title="クリア"
+                      style="display:none;">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <!-- ドロップダウンリスト -->
+            <ul class="list-group position-absolute w-100 shadow-sm"
+                id="equipment_dropdown"
+                style="display:none; max-height:240px; overflow-y:auto; z-index:1050;">
+              {% for eq in equipment_list %}
+              <li class="list-group-item list-group-item-action py-2"
+                  style="cursor:pointer;"
+                  data-id="{{ eq.id }}"
+                  data-label="{{ eq.name }}（{{ eq.location }}）">
+                {{ eq.name }}（{{ eq.location }}）
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div class="form-text" id="equipment_search_count"></div>
           {% if session['user']['role'] == 'engineer' %}
           <div class="form-text">担当設備のみ表示されています。</div>
           {% endif %}
@@ -58,6 +87,7 @@
                  id="inspected_at"
                  name="inspected_at"
                  value="{{ form_data.inspected_at if form_data else today }}"
+                 max="{{ today }}"
                  required>
         </div>
 
@@ -111,22 +141,49 @@
           </div>
         </div>
 
-        <!-- 備考 -->
+        <!-- 要修理時の次回修理予定日（要修理選択時のみ表示） -->
+        <div class="col-md-6" id="repair_next_date_area" style="display: none;">
+          <label for="repair_next_date" class="form-label">
+            次回修理予定日 <span class="text-danger">*</span>
+          </label>
+          <input type="date"
+                 class="form-control"
+                 id="repair_next_date"
+                 name="repair_next_date"
+                 value="{{ form_data.repair_next_date if form_data else '' }}">
+          <div class="form-text">次回修理予定日を選択してください（点検実施日から1週間以内）。</div>
+        </div>
+
+        <!-- 備考（要修理の場合は必須） -->
         <div class="col-md-12">
-          <label for="note" class="form-label">備考</label>
+          <label for="note" class="form-label">
+            備考 <span id="note_required_mark" class="text-danger" style="display: none;">*</span>
+            <span id="note_optional_mark" class="text-muted small">（任意）</span>
+          </label>
           <textarea class="form-control"
                     id="note"
                     name="note"
                     rows="4"
-                    placeholder="特記事項があれば入力してください（任意）">{{ form_data.note if form_data and form_data.note else '' }}</textarea>
+                    placeholder="特記事項があれば入力してください">{{ form_data.note if form_data and form_data.note else '' }}</textarea>
+          <div class="form-text text-danger" id="note_repair_hint" style="display: none;">
+            要修理の場合は修理内容・対応方針を備考に記入してください。
+          </div>
         </div>
 
       </div>
 
-      <!-- 登録後の案内メッセージ -->
-      <div class="alert alert-info mt-3" role="alert">
+      <!-- ステータス別の案内メッセージ -->
+      <div class="alert alert-info mt-3" id="info_normal" role="alert">
         <i class="bi bi-info-circle me-1"></i>
-        登録すると次回点検予定日が自動的に更新されます。
+        登録すると次回点検予定日が通常の点検間隔で自動設定されます。
+      </div>
+      <div class="alert alert-warning mt-3" id="info_watch" role="alert" style="display: none;">
+        <i class="bi bi-info-circle me-1"></i>
+        要観察のため、次回点検予定日は通常間隔の<strong>半分</strong>で自動設定されます（間隔1ヶ月の場合は2週間後）。
+      </div>
+      <div class="alert alert-danger mt-3" id="info_repair" role="alert" style="display: none;">
+        <i class="bi bi-info-circle me-1"></i>
+        要修理のため、次回修理予定日を上のカレンダーから<strong>点検実施日の1週間以内</strong>で選択してください。
       </div>
 
       <!-- ボタングループ -->
@@ -134,7 +191,7 @@
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-check-circle me-1"></i>登録
         </button>
-        <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-secondary">
+        <a href="{{ cancel_url }}" class="btn btn-outline-secondary">
           <i class="bi bi-x-circle me-1"></i>キャンセル
         </a>
       </div>
@@ -143,4 +200,214 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ステータス変更時に次回点検日エリア・備考欄・案内メッセージを切り替える
+  function onStatusChange(selectedValue) {
+    var repairArea = document.getElementById('repair_next_date_area');
+    var repairInput = document.getElementById('repair_next_date');
+    var noteInput = document.getElementById('note');
+    var noteRequiredMark = document.getElementById('note_required_mark');
+    var noteOptionalMark = document.getElementById('note_optional_mark');
+    var noteRepairHint = document.getElementById('note_repair_hint');
+    var infoNormal = document.getElementById('info_normal');
+    var infoWatch = document.getElementById('info_watch');
+    var infoRepair = document.getElementById('info_repair');
+
+    if (selectedValue === 'repair') {
+      repairArea.style.display = '';
+      repairInput.required = true;
+      noteInput.required = true;
+      noteRequiredMark.style.display = '';
+      noteOptionalMark.style.display = 'none';
+      noteRepairHint.style.display = '';
+      infoNormal.style.display = 'none';
+      infoWatch.style.display = 'none';
+      infoRepair.style.display = '';
+    } else if (selectedValue === 'watch') {
+      repairArea.style.display = 'none';
+      repairInput.required = false;
+      noteInput.required = false;
+      noteRequiredMark.style.display = 'none';
+      noteOptionalMark.style.display = '';
+      noteRepairHint.style.display = 'none';
+      infoNormal.style.display = 'none';
+      infoWatch.style.display = '';
+      infoRepair.style.display = 'none';
+    } else {
+      repairArea.style.display = 'none';
+      repairInput.required = false;
+      noteInput.required = false;
+      noteRequiredMark.style.display = 'none';
+      noteOptionalMark.style.display = '';
+      noteRepairHint.style.display = 'none';
+      infoNormal.style.display = '';
+      infoWatch.style.display = 'none';
+      infoRepair.style.display = 'none';
+    }
+  }
+
+  // ---- 対象設備 コンボボックス ----
+  (function () {
+    var searchInput = document.getElementById('equipment_search');
+    var hiddenInput = document.getElementById('equipment_id');
+    var dropdown    = document.getElementById('equipment_dropdown');
+    var clearBtn    = document.getElementById('equipment_clear');
+    var countEl     = document.getElementById('equipment_search_count');
+
+    // ドロップダウン内の全 <li> を配列で保持する
+    var allItems = Array.prototype.slice.call(dropdown.querySelectorAll('li'));
+
+    // ドロップダウンを開く
+    function openDropdown() {
+      dropdown.style.display = '';
+    }
+
+    // ドロップダウンを閉じる
+    function closeDropdown() {
+      dropdown.style.display = 'none';
+      countEl.textContent = '';
+    }
+
+    // キーワードで <li> を絞り込む
+    function filterItems(keyword) {
+      var kw = keyword.trim().toLowerCase();
+      var visible = 0;
+      allItems.forEach(function (li) {
+        var text = li.textContent.trim().toLowerCase();
+        var match = (kw === '' || text.indexOf(kw) !== -1);
+        li.style.display = match ? '' : 'none';
+        if (match) { visible++; }
+      });
+      countEl.textContent = (kw !== '') ? (visible + ' 件 / ' + allItems.length + ' 件') : '';
+    }
+
+    // 設備を選択する
+    function selectItem(id, label) {
+      hiddenInput.value  = id;
+      searchInput.value  = label;
+      clearBtn.style.display = '';
+      searchInput.classList.remove('is-invalid');
+      closeDropdown();
+    }
+
+    // 検索ボックスをクリック → ドロップダウンを開く
+    searchInput.addEventListener('click', function () {
+      filterItems(this.value);
+      openDropdown();
+    });
+
+    // 文字入力 → 絞り込む（選択状態はクリア）
+    searchInput.addEventListener('input', function () {
+      hiddenInput.value = '';
+      clearBtn.style.display = this.value ? '' : 'none';
+      filterItems(this.value);
+      openDropdown();
+    });
+
+    // ドロップダウンのアイテムをクリック → 選択
+    dropdown.addEventListener('mousedown', function (e) {
+      // mousedown で処理することで searchInput の blur より先に実行される
+      var li = e.target.closest('li');
+      if (!li) { return; }
+      e.preventDefault();
+      selectItem(li.dataset.id, li.dataset.label);
+    });
+
+    // クリアボタン → 選択を解除してドロップダウンを開く
+    clearBtn.addEventListener('click', function () {
+      hiddenInput.value = '';
+      searchInput.value = '';
+      clearBtn.style.display = 'none';
+      allItems.forEach(function (li) { li.style.display = ''; });
+      countEl.textContent = '';
+      searchInput.focus();
+      openDropdown();
+    });
+
+    // ボックス外クリック → ドロップダウンを閉じる
+    document.addEventListener('click', function (e) {
+      if (!searchInput.contains(e.target) &&
+          !dropdown.contains(e.target) &&
+          !clearBtn.contains(e.target)) {
+        closeDropdown();
+        // 選択が確定していないのにテキストだけ残っている場合はクリアする
+        if (!hiddenInput.value) {
+          searchInput.value = '';
+          clearBtn.style.display = 'none';
+        }
+      }
+    });
+
+    // フォーム送信時に設備が選択されているか確認する
+    searchInput.closest('form').addEventListener('submit', function (e) {
+      if (!hiddenInput.value) {
+        e.preventDefault();
+        searchInput.classList.add('is-invalid');
+        searchInput.focus();
+        filterItems('');
+        openDropdown();
+      }
+    });
+
+    // ページ読み込み時：既に選択済みIDがあればラベルを表示する（URL引数 or フォームエラー再表示）
+    if (hiddenInput.value) {
+      var preSelected = allItems.find(function (li) {
+        return String(li.dataset.id) === String(hiddenInput.value);
+      });
+      if (preSelected) {
+        searchInput.value = preSelected.dataset.label;
+        clearBtn.style.display = '';
+      }
+    }
+  })();
+  // ---- コンボボックス ここまで ----
+
+  // 点検実施日から次回修理予定日の選択範囲（当日〜7日後）を設定する
+  function updateRepairDateRange() {
+    var inspectedVal = document.getElementById('inspected_at').value;
+    var repairInput  = document.getElementById('repair_next_date');
+    if (!inspectedVal) return;
+
+    var base = new Date(inspectedVal);
+    var maxDate = new Date(base);
+    maxDate.setDate(maxDate.getDate() + 7);
+
+    // Date を YYYY-MM-DD 文字列に変換する
+    function toStr(d) {
+      var y  = d.getFullYear();
+      var m  = String(d.getMonth() + 1).padStart(2, '0');
+      var dy = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + dy;
+    }
+
+    repairInput.min = toStr(base);
+    repairInput.max = toStr(maxDate);
+
+    // 現在の値が範囲外になった場合はクリアする
+    if (repairInput.value &&
+        (repairInput.value < repairInput.min || repairInput.value > repairInput.max)) {
+      repairInput.value = '';
+    }
+  }
+
+  // 点検実施日が変わったときに修理予定日の範囲を更新する
+  document.getElementById('inspected_at').addEventListener('change', updateRepairDateRange);
+
+  // ラジオボタンの変更イベントを登録する
+  document.querySelectorAll('input[name="status"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      onStatusChange(this.value);
+    });
+  });
+
+  // ページ読み込み時に現在選択中のステータスと日付範囲を初期設定する
+  var checkedStatus = document.querySelector('input[name="status"]:checked');
+  if (checkedStatus) {
+    onStatusChange(checkedStatus.value);
+  }
+  updateRepairDateRange();
+</script>
 {% endblock %}

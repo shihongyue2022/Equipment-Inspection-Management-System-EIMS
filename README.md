@@ -1,7 +1,9 @@
-# EIMS — 設備点検管理Webアプリ
+# E_T.ECH — 設備点検管理Webアプリ
 
-架空の設備保守会社を題材にした設備点検管理Webアプリです。  
+AKK空調設備株式会社向けの設備点検管理Webアプリです。  
 フィールドエンジニア（FE）が点検結果を登録し、管理者がリアルタイムで把握できます。
+
+---
 
 ## 目次
 
@@ -53,7 +55,7 @@ winget install Git.Git
 
 ```powershell
 git clone <リポジトリURL>
-cd Equipment-Inspection-Management-System-EIMS-
+cd E_T.ECH
 ```
 
 ### ② .env ファイルを作成する
@@ -81,8 +83,34 @@ docker compose up -d
 初回起動時は自動で以下が完了します：
 - MySQL コンテナの起動
 - `inspection_db` データベースの作成
-- テーブルの作成・初期データの投入
+- テーブルの作成・初期データの投入（スキーマ + 社員・設備データ）
+- **時系列点検データ 254,502件の投入**（1〜3分かかります）
 - Flask アプリコンテナのビルドと起動
+
+> **ポイント：** `docker-entrypoint-initdb.d/` に2つのSQLがマウントされています。  
+> - `01_schema_and_data.sql` → スキーマ + 基本データ  
+> - `02_timeseries.sql` → 時系列点検記録（46倍データ）  
+> ボリュームが**初回作成時のみ**自動実行されます。  
+>
+> **healthcheck が `healthy` になるまでの目安：1〜5分**  
+> MySQL の healthcheck が inspection_records の件数（20万超）を確認してから `healthy` になるため、  
+> Flask アプリは全データ投入完了後に起動します。  
+> `docker compose ps` で `inspection_mysql` が `healthy` になるまでお待ちください。
+
+### ③'（別手順） セットアップスクリプトを使う
+
+ボリューム作成済みの場合や、時系列データだけ再適用したい場合は `setup_db.ps1` を使います。
+
+```powershell
+# 時系列データのみを現在のDBに適用する（スキーマは変更しない）
+.\setup_db.ps1
+
+# ボリュームを含めてゼロから完全リセット → 全データを再投入
+.\setup_db.ps1 -Reset
+```
+
+> 初回実行前に PowerShell 実行ポリシーを設定してください：  
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
 
 ### ④ 起動確認
 
@@ -97,31 +125,17 @@ docker compose ps
 | `inspection_mysql` | `healthy` |
 | `inspection_web` | `Up` |
 
-### ⑤ ブラウザで確認する
-
-```
-http://localhost:5000/login
-```
-
-ログイン画面が表示されれば成功です。
-
----
-
-## 3. ローカル開発環境
-
-Flask アプリをコンテナではなくローカルで動かす場合の手順です。
-
 ### ① Python 仮想環境を作成する
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 ```
 
 ### ② 依存ライブラリをインストールする
 
 ```powershell
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### ③ DB だけ Docker で起動する
@@ -133,13 +147,20 @@ docker compose ps
 
 `inspection_mysql` の `STATUS` が `healthy` になるまで待ちます。
 
-### ④ Flask アプリをローカルで起動する
+```text
+実行フロー：
+MySQL起動 → DB設定 → 接続関数 → DTO → DAO → Service → Flask Route → テスト → ブラウザ確認
+```
+
+最後のセルが Flask ログイン画面の URL を出力します（例：`http://127.0.0.1:5001/login`）。
+
+### run.pyをローカルで起動する
 
 ```powershell
 python run.py
 ```
 
-`http://localhost:5000/login` でアクセスできます。
+Running on urlでアクセスできます。
 
 ---
 
@@ -147,10 +168,10 @@ python run.py
 
 | 種別 | 社員番号 | パスワード | ロール | 表示範囲 |
 |------|---------|-----------|--------|---------|
-| ROOT管理者 | `SYS-001` | `root-demo-2026` | `root` | 全設備・管理機能 |
-| 管理者 | `ADM-101` | `admin-demo-2026` | `admin` | 全設備・管理機能 |
-| フィールドエンジニア | `TEC-201` | `engineer-demo-2026` | `engineer` | 自分の担当設備 |
-| 学習用エンジニア | `DEMO-901` | `viewer-demo-2026` | `engineer` | ログインフロー確認用 |
+| ROOT管理者 | `ROOT-000` | `root1234` | `root` | 全設備・管理機能 |
+| 管理者 | `ENG-000` | `admin1234` | `admin` | 全設備・管理機能 |
+| フィールドエンジニア | `ENG-008` | `password1234` | `engineer` | 自分の担当設備 |
+| 学習用エンジニア | `DEMO-001` | `demo1234` | `engineer` | ログインフロー確認用 |
 
 ---
 
@@ -209,55 +230,87 @@ python run.py
 ## 7. ディレクトリ構成
 
 ```
-Equipment-Inspection-Management-System-EIMS-/
+E_T.ECH/
 ├── app/
-│   ├── __init__.py              # create_appアプリケーションファクトリ
-│   ├── config.py                # 環境変数・SQLAlchemy設定
-│   ├── extensions.py            # DB・CSRF・Migration
-│   ├── models.py                # SQLAlchemyモデル
-│   ├── auth/                    # 認証Blueprint
-│   ├── dashboard/               # ダッシュボードBlueprint
-│   ├── equipment/               # 設備Blueprint
-│   ├── inspections/             # 点検Blueprint
-│   ├── accounts/                # アカウントBlueprint
-│   ├── services/                # ビジネスロジック・トランザクション
-│   ├── common/                  # 認証・権限デコレータ
-│   ├── templates/               # Jinja2 + Tabler UIテンプレート
-│   ├── static/                  # 独自CSS・ローカル配信のTablerアセット
-│   └── database/                # 初期データSQL
-├── migrations/                  # Alembicマイグレーション
-├── docs/                        # 公開用設計書
-├── tests/                       # SQLite統合テスト
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── THIRD_PARTY_NOTICES.md       # OSSライセンス・使用バージョン
-└── run.py                       # ローカル開発入口
+│   ├── __init__.py              # Flaskアプリ生成・ルーティング登録
+│   ├── utils.py                 # 共通ユーティリティ（get_deadline_status）
+│   ├── dao/                     # DB操作クラス（SQL はここだけに書く）
+│   │   ├── __init__.py
+│   │   ├── dao.py               # 基底DAOクラス（接続・切断）
+│   │   ├── user_dao.py          # UserDao
+│   │   ├── equipment_dao.py     # EquipmentDao
+│   │   └── inspection_dao.py    # InspectionDao
+│   ├── dto/                     # データ転送オブジェクト（@property / @setter）
+│   │   ├── __init__.py
+│   │   ├── user_dto.py          # UserDto
+│   │   ├── equipment_dto.py     # EquipmentDto
+│   │   └── inspection_dto.py    # InspectionDto
+│   ├── views/                   # ルーティング・ビュー関数
+│   │   ├── __init__.py
+│   │   ├── auth_view.py         # ログイン・ログアウト
+│   │   ├── dashboard_view.py    # ダッシュボード
+│   │   └── account_view.py      # アカウント管理
+│   ├── templates/               # Jinja2テンプレート（HTML）
+│   │   ├── base.html            # 共通レイアウト
+│   │   ├── login.html
+│   │   ├── dashboard.html
+│   │   ├── account/             # アカウント管理画面
+│   │   │   ├── list.html
+│   │   │   ├── new.html
+│   │   │   └── detail.html
+│   │   ├── equipment/           # 設備マスタ画面
+│   │   │   ├── list.html
+│   │   │   ├── new.html
+│   │   │   ├── detail.html
+│   │   │   └── edit.html
+│   │   ├── inspection/          # 点検記録画面
+│   │   │   └── new.html
+│   │   └── errors/              # エラー画面
+│   │       ├── 404.html
+│   │       └── 500.html
+│   ├── models/                  # （将来拡張用）
+│   ├── static/                  # CSS・画像
+│   │   └── style.css
+│   └── database/
+│       ├── config.py            # DB接続設定（環境変数で切り替え）
+│       ├── create_app_db.sql    # DB・テーブル作成・初期データSQL
+│       └── README.md
+├── docs/                        # 設計書・ドキュメント
+│   ├── notebooks/
+│   │   └── flask_login_demo.ipynb
+│   ├── 01_要件定義書.md
+│   ├── 02_基本設計書.md
+│   ├── 03_詳細設計書.md
+│   ├── 04_データベース定義書.md
+│   ├── 05_課題管理表.md
+│   ├── 06_バックログ_Sprint1.md
+│   ├── Gitチーム規約.md
+│   ├── タスクボード.xlsx
+│   ├── 日報.txt
+│   └── 顧客向け要件定義書.html
+├── logs/                        # Claude Codeログ
+│   └── Sprint1/
+├── workspace/                   # 学習用ファイル・資料
+├── Dockerfile                   # Webコンテナのビルド定義
+├── docker-compose.yml           # web（Flask）+ db（MySQL）の2コンテナ構成
+├── wsgi.py                      # Flaskエントリポイント
+├── requirements.txt             # Python依存ライブラリ
+├── .env                         # 環境変数（Gitに含めない）
+└── CLAUDE.md                    # AI利用方針・コーディング規約
 ```
-
-### フロントエンド構成
-
-画面は Flask/Jinja2 のサーバーサイドレンダリングを維持し、UI 基盤に
-`@tabler/core 1.4.0` と `@tabler/icons-webfont 3.44.0` を使用します。
-外部 CDN には依存せず、固定バージョンの配布ファイルを `app/static/vendor/`
-から配信します。独自スタイルは `app/static/style.css` に限定してください。
-
-Tabler 本体を改変・更新する場合は、配布ファイルを直接編集せず、バージョンを
-固定して差し替えたうえで `THIRD_PARTY_NOTICES.md` と同梱ライセンスも更新します。
 
 ---
 
 ## 8. DBのリセット・確認手順
 
-スキーマ変更は Flask-Migrate/Alembic で管理します。
+### 最速リセット（スクリプト推奨）
 
 ```powershell
-flask --app app db upgrade
+# ボリュームを含めてゼロから再作成（スキーマ + 全データ自動投入）
+.\setup_db.ps1 -Reset
 ```
 
-`create_app_db.sql` から作成したローカルDBには初期マイグレーション番号も自動登録されるため、以後は同じ `db upgrade` コマンドを使用できます。
-
-### テーブルが作られていない場合のリセット
+### 手動でリセットする場合
 
 MySQL の初期化 SQL は**ボリューム初回作成時のみ実行**されます。  
 SQL ファイルを修正した場合やテーブルが存在しない場合は以下でリセットします。
@@ -266,7 +319,7 @@ SQL ファイルを修正した場合やテーブルが存在しない場合は�
 # コンテナとデータボリュームを完全削除
 docker compose down -v
 
-# 再起動（初期化SQLが再実行される）
+# 再起動（初期化SQLが再実行される。1〜3分かかる）
 docker compose up -d
 ```
 
@@ -319,7 +372,8 @@ EXIT;
 
 ## 10. テストの実行方法
 
-テストはインメモリ SQLite を使用するHTTP統合テストです。MySQLやDockerは不要です。
+テストは `unittest.mock` でDAO層をモック化しているため、**DB接続・Dockerは不要**です。  
+仮想環境が有効な状態で実行してください。
 
 ### 事前準備
 
@@ -328,7 +382,7 @@ EXIT;
 .\venv\Scripts\Activate.ps1
 
 # 依存ライブラリをインストールする（まだの場合）
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ### テストを実行する
@@ -340,29 +394,30 @@ pytest tests/ -v
 
 ```powershell
 # ファイルを指定して実行する
-pytest tests/test_accounts.py -v
+pytest tests/test_account_view.py -v
 ```
 
 ### 出力例
 
 ```
-15 passed in X.XXs
+tests/test_account_view.py::test_list_accessible_for_root PASSED
+tests/test_account_view.py::test_list_accessible_for_admin PASSED
+tests/test_account_view.py::test_list_blocked_for_engineer PASSED
+...
+32 passed in 0.XXs
 ```
 
 ### テストファイル一覧
 
 | ファイル | 対象機能 | DB接続 |
 |---------|---------|--------|
-| `tests/test_auth.py` | ログイン・未認証アクセス | SQLite |
-| `tests/test_accounts.py` | アカウント管理・権限制御 | SQLite |
-| `tests/test_equipment.py` | 設備CRUD・担当制御 | SQLite |
-| `tests/test_inspection.py` | 点検登録・トランザクション | SQLite |
+| `tests/test_account_view.py` | アカウント管理ビューの権限制御（32件） | 不要（モック使用） |
 
 > 新しいテストを追加する場合は `tests/conftest.py` のフィクスチャ（`client`・`login_as`）を使用してください。
 
 ---
 
-## 11. TiDB Cloud を使ってローカル Docker からオンライン DB に接続する手順
+## 11. TiDB Cloud を使ってローカル Docker からオンライン DB に接続する手順(PORT: 4000が禁じされない前提として使える)
 
 本プロジェクトは、通常のローカル開発では Docker の MySQL を使用します。
 この章では、Web アプリは自分の PC の Docker で動かし、DB だけ TiDB Cloud に切り替える手順を説明します。
@@ -373,10 +428,6 @@ DB : TiDB Cloud Starter（MySQL プロトコル互換）
 ```
 
 この構成では、外部公開 URL は作成されません。ブラウザでは次の URL から確認します。
-
-```text
-http://localhost:5000/login
-```
 
 ### 11.1 登録が必要なサービス
 
@@ -403,7 +454,7 @@ docs/images/deploy/
 | 4 | `04_tidb_overview_active.png` | Instance Overview と `Status: Active` |
 | 5 | `05_tidb_connect_parameters.png` | Connect 画面の Host / Port / Username |
 | 6 | `06_powershell_import_sql.png` | PowerShell で SQL を投入した結果 |
-| 7 | `07_localhost_login.png` | `http://localhost:5000/login` のログイン画面 |
+| 7 | `07_localhost_login.png` | ログイン画面 |
 
 > 画像にパスワードが写っている場合は、保存前に必ず塗りつぶしてください。
 
@@ -452,7 +503,7 @@ My TiDB
    Project が 1 つも存在しない場合だけ、右上の `Create Project` から作成します。
 
 ```text
-Project Name: eims-demo
+Project Name: e-tech-inspection
 ```
 
 4. 右上の `Create Resource` をクリックします。
@@ -487,7 +538,7 @@ Region: Tokyo (ap-northeast-1)
 
 ```text
 Project: 既存の Project（例: db）
-Instance Name: eims-demo
+Instance Name: e-tech-inspection
 ```
 
 8. Capacity の `Monthly Spending Limit` は `$0.00` のままにします。
@@ -505,7 +556,7 @@ Dual-Layer Data Encryption: Disabled
 ```text
 Plan: Starter
 Project: db
-Instance Name: eims-demo
+Instance Name: e-tech-inspection
 Cloud Provider: AWS
 Region: Tokyo (ap-northeast-1)
 Spending Limit: $0 / month
@@ -522,7 +573,7 @@ Dual-Layer Data Encryption: Disabled
 Create Resource
 Plan: Starter
 Project: db
-Instance Name: eims-demo
+Instance Name: e-tech-inspection
 Cloud Provider: AWS
 Region: Tokyo (ap-northeast-1)
 Monthly Spending Limit: $0.00
@@ -540,7 +591,7 @@ Create
 ```text
 Overview
 Instance Properties
-  Instance Name: eims-demo
+  Instance Name: e-tech-inspection
   Status: Active
   Plan: Starter
   Region: Tokyo (ap-northeast-1)
@@ -553,7 +604,7 @@ Instance Properties
 スクリーンショット内容の目安：
 
 ```text
-Connect to eims-demo
+Connect to e-tech-inspection
 Connection Type: Public
 Database: inspection_db または sys
 Operating System: Windows
@@ -573,7 +624,7 @@ Parameters:
 14. `Parameters` に表示される次の接続情報を控えます。
 
 ```text
-HOST: <TiDB Cloud に表示された HOST>
+HOST: gateway01.ap-northeast-1.prod.aws.tidbcloud.com
 PORT: 4000
 USERNAME: TiDB Cloud に表示されたユーザー名
 PASSWORD: Generate Password で生成したパスワード
@@ -585,7 +636,7 @@ TiDB Cloud の Connect 画面では `DATABASE: sys` と表示される場合が�
 `.env` には通常、次の値を設定します。
 
 ```text
-DB_HOST=<TiDB Cloud に表示された HOST>
+DB_HOST=gateway01.ap-northeast-1.prod.aws.tidbcloud.com
 DB_PORT=4000
 DB_USER=TiDB Cloud に表示されたユーザー名
 DB_PASSWORD=Generate Password で生成したパスワード
@@ -603,14 +654,14 @@ TiDB Cloud の SQL Editor に長い SQL を貼り付ける方法もあります�
 1. PowerShell でプロジェクトルートに移動します。
 
 ```powershell
-cd D:\projects\myapplication
+cd D:\projects\E_T.ECH
 ```
 
 2. TiDB Cloud の接続情報を環境変数に設定します。
    `TIDB_PASSWORD` には、`Generate Password` で生成したパスワードを入力してください。
 
 ```powershell
-$env:TIDB_HOST="<TiDB Cloud に表示された HOST>"
+$env:TIDB_HOST="gateway01.ap-northeast-1.prod.aws.tidbcloud.com"
 $env:TIDB_PORT="4000"
 $env:TIDB_USER="<TiDB Cloud に表示された USERNAME>"
 $env:TIDB_PASSWORD="<Generate Password で生成したパスワード>"
@@ -703,12 +754,12 @@ Web アプリは自分の PC の Docker で起動し、DB だけ TiDB Cloud を�
 TiDB Cloud Starter（inspection_db）
 ```
 
-この方法では、外部公開 URL は作成されません。自分の PC で `http://localhost:5000/login` から確認します。
+この方法では、外部公開 URL は作成されません。自分の PC で確認します。
 
 1. `.env` を TiDB Cloud 用に変更します。
 
 ```env
-DB_HOST=<TiDB Cloud に表示された HOST>
+DB_HOST=gateway01.ap-northeast-1.prod.aws.tidbcloud.com
 DB_PORT=4000
 DB_USER=<TiDB Cloud に表示された USERNAME>
 DB_PASSWORD=<Generate Password で生成したパスワード>
@@ -731,10 +782,6 @@ docker compose -f docker-compose.yml -f docker-compose.cloud-db.yml logs -f web
 
 4. ブラウザでログイン画面を開きます。
 
-```text
-http://localhost:5000/login
-```
-
 Docker のログに次のような表示が出る場合があります。
 
 ```text
@@ -744,9 +791,6 @@ Docker のログに次のような表示が出る場合があります。
 これは Docker コンテナ内部のネットワークアドレスです。ブラウザからアクセスする場合は、通常このアドレスではなく、ポート公開されたローカル PC 側のアドレスを使用します。
 
 ```text
-ブラウザで開くURL:
-http://localhost:5000/login
-
 Docker内部のURL:
 http://172.18.0.3:5000
 ```
@@ -781,10 +825,10 @@ PC の localhost:5000
 
 | ロール | 社員番号 | パスワード |
 |---|---|---|
-| ROOT 管理者 | `SYS-001` | `root-demo-2026` |
-| 管理者 | `ADM-101` | `admin-demo-2026` |
-| エンジニア | `TEC-201` | `engineer-demo-2026` |
-| Demo エンジニア | `DEMO-901` | `viewer-demo-2026` |
+| ROOT 管理者 | `ROOT-000` | `root1234` |
+| 管理者 | `ENG-000` | `admin1234` |
+| エンジニア | `ENG-008` | `password1234` |
+| Demo エンジニア | `DEMO-001` | `demo1234` |
 
 6. 停止する場合は次を実行します。
 

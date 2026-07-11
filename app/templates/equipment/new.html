@@ -20,7 +20,7 @@
     {% endif %}
 
     <!-- 設備登録フォーム -->
-    <form method="POST" action="{{ url_for('equipment.new_post') }}">
+    <form method="POST" action="{{ url_for('equipment_new_post') }}">
       <!-- CSRF対策トークン -->
       {{ form.hidden_tag() if form else '' }}
 
@@ -49,9 +49,16 @@
                  class="form-control"
                  id="location"
                  name="location"
+                 list="location-suggestions"
                  value="{{ form_data.location if form_data else '' }}"
                  placeholder="例: 〇〇ビル 3F サーバー室"
                  required>
+          <!-- 登録済みの設置場所をオートコンプリート候補として表示する -->
+          <datalist id="location-suggestions">
+            {% for loc in location_list %}
+            <option value="{{ loc }}">
+            {% endfor %}
+          </datalist>
         </div>
 
         <!-- 設備種別 -->
@@ -77,9 +84,16 @@
                  class="form-control"
                  id="manufacturer"
                  name="manufacturer"
+                 list="manufacturer-suggestions"
                  value="{{ form_data.manufacturer if form_data else '' }}"
-                 placeholder="例: 北辰空調工業"
+                 placeholder="例: ダイキン工業"
                  required>
+          <!-- 登録済みのメーカーをオートコンプリート候補として表示する -->
+          <datalist id="manufacturer-suggestions">
+            {% for mfr in manufacturer_list %}
+            <option value="{{ mfr }}">
+            {% endfor %}
+          </datalist>
         </div>
 
         <!-- 型番 -->
@@ -126,6 +140,21 @@
           <div class="form-text">1〜12の整数を入力してください。</div>
         </div>
 
+        <!-- エリア（NULL許容・選択式） -->
+        <div class="col-md-6">
+          <label for="area" class="form-label">エリア</label>
+          <select class="form-select" id="area" name="area" onchange="onAreaChange(this.value)">
+            <option value="">─ 未設定 ─</option>
+            {% for base in base_list %}
+            <option value="{{ base }}"
+              {% if form_data and form_data.get('area') == base %}selected{% endif %}>
+              {{ base }}
+            </option>
+            {% endfor %}
+          </select>
+          <div class="form-text">選択するとそのエリアのエンジニアが担当者欄の上位に表示されます。</div>
+        </div>
+
         <!-- 担当エンジニア（NULL許容） -->
         <div class="col-md-6">
           <label for="assigned_user_id" class="form-label">担当エンジニア</label>
@@ -135,6 +164,7 @@
             <option value="">未割当</option>
             {% for user in engineer_list %}
             <option value="{{ user.id }}"
+                    data-base="{{ user.base or '' }}"
               {% if form_data and form_data.get('assigned_user_id') == user.id|string %}selected{% endif %}>
               {{ user.full_name }}
             </option>
@@ -150,7 +180,7 @@
         <button type="submit" class="btn btn-primary">
           <i class="bi bi-check-circle me-1"></i>登録
         </button>
-        <a href="{{ url_for('equipment.list_get') }}" class="btn btn-outline-secondary">
+        <a href="{{ url_for('equipment_list_get') }}" class="btn btn-outline-secondary">
           <i class="bi bi-x-circle me-1"></i>キャンセル
         </a>
       </div>
@@ -159,4 +189,48 @@
   </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // エリア選択時：そのエリアのエンジニアを担当者欄の上位に並べ替える
+  function onAreaChange(selectedArea) {
+    var select = document.getElementById('assigned_user_id');
+    var allOptions = Array.from(select.querySelectorAll('option[data-base]'));
+
+    // 既存のセパレーターを削除する
+    var sep = select.querySelector('option[data-separator]');
+    if (sep) { sep.remove(); }
+
+    // エンジニア選択肢をいったん取り除く
+    allOptions.forEach(function (opt) { opt.remove(); });
+
+    if (selectedArea) {
+      var matched = allOptions.filter(function (opt) { return opt.dataset.base === selectedArea; });
+      var others  = allOptions.filter(function (opt) { return opt.dataset.base !== selectedArea; });
+      // そのエリアのエンジニアを先頭に追加する
+      matched.forEach(function (opt) { select.appendChild(opt); });
+      // セパレーターを追加してからそれ以外を追加する
+      if (matched.length > 0 && others.length > 0) {
+        var sepOpt = document.createElement('option');
+        sepOpt.disabled = true;
+        sepOpt.setAttribute('data-separator', '1');
+        sepOpt.textContent = '── その他 ──';
+        select.appendChild(sepOpt);
+      }
+      others.forEach(function (opt) { select.appendChild(opt); });
+    } else {
+      // エリア未選択時は元の順番に戻す
+      allOptions.forEach(function (opt) { select.appendChild(opt); });
+    }
+  }
+
+  // ページ読み込み時：エリアが選択済みなら並べ替えを適用する
+  document.addEventListener('DOMContentLoaded', function () {
+    var areaSelect = document.getElementById('area');
+    if (areaSelect && areaSelect.value) {
+      onAreaChange(areaSelect.value);
+    }
+  });
+</script>
 {% endblock %}

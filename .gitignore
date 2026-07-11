@@ -18,12 +18,14 @@ instance/
 .env
 .env.local
 .env_backup
-.env*.backup
 secrets.py
 # VS Code
 .vscode/settings.json
 # macOS
 .DS_Store
+# Claude Code ログエクスポートスクリプト
+export_claude_log.ps1
+
 # ログ（Claude Code チャットログは logs/ フォルダで管理するので除外しない）
 logs/*
 *.log
@@ -31,12 +33,10 @@ logs/*
 workspace/
 .ipynb_checkpoints/
 
-# Local archive of the pre-rewrite Git history. Never publish this bundle.
-.legacy-history.bundle
-.private-recovery/
+# Documentation is versioned in the private EIMS-private-docs repository.
+/docs/
 
-# Recovered screenshots are local references and may contain private data.
-preview_screenshots/*.png
-docs/images/deploy/*.png
-D:\projects\myapplication\.agents/
-D:\projects\myapplication\.pytest_cache/
+# Local repository migration and recovery artifacts.
+/.legacy-history.bundle
+/.private-recovery/
+/CLAUDE.md

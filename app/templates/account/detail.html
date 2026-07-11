@@ -30,7 +30,7 @@
     {% endif %}
 
     <!-- アカウント編集フォーム（IDを付与してボタンから参照する） -->
-    <form id="edit-form" method="POST" action="{{ url_for('accounts.detail_post', user_id=user.id) }}">
+    <form id="edit-form" method="POST" action="{{ url_for('account_detail_post', id=user.id) }}">
       <!-- CSRF対策トークン -->
       {{ form.hidden_tag() if form else '' }}
 
@@ -46,14 +46,14 @@
                  id="employee_no"
                  name="employee_no"
                  value="{{ user.employee_no }}"
-                 {% if is_admin_viewing_root %}disabled{% endif %}
+                 {% if session['user']['role'] != 'root' %}disabled{% endif %}
                  required>
         </div>
 
-        <!-- 苗字 -->
-        <div class="col-md-6">
+        <!-- 姓 -->
+        <div class="col-md-3">
           <label for="last_name" class="form-label">
-            苗字 <span class="text-danger">*</span>
+            姓 <span class="text-danger">*</span>
           </label>
           <input type="text"
                  class="form-control"
@@ -64,10 +64,10 @@
                  required>
         </div>
 
-        <!-- 名前 -->
-        <div class="col-md-6">
+        <!-- 名 -->
+        <div class="col-md-3">
           <label for="first_name" class="form-label">
-            名前 <span class="text-danger">*</span>
+            名 <span class="text-danger">*</span>
           </label>
           <input type="text"
                  class="form-control"
@@ -149,18 +149,61 @@
                  value="{{ user.phone if user.phone else '' }}"
                  placeholder="例: 090-1234-5678"
                  {% if is_admin_viewing_root %}disabled{% endif %}>
+          <div class="form-text">入力は任意です。</div>
         </div>
 
         <!-- 拠点 -->
         <div class="col-md-6">
-          <label for="base" class="form-label">拠点</label>
-          <input type="text"
-                 class="form-control"
-                 id="base"
-                 name="base"
-                 value="{{ user.base if user.base else '' }}"
-                 placeholder="例: 東雲中央サービス拠点"
-                 {% if is_admin_viewing_root %}disabled{% endif %}>
+          <label for="base_select" class="form-label">拠点</label>
+          {# root 向け：既存リストにない拠点が設定されている場合は「新規追加」を選択状態にする #}
+          {% set base_not_in_list = user.base and user.base not in base_list %}
+          <div class="d-flex gap-2 align-items-start">
+            <div class="flex-grow-1">
+              <select class="form-select" id="base_select" name="base"
+                      onchange="toggleBaseInput()"
+                      {% if is_admin_viewing_root %}disabled{% endif %}>
+                <option value="">─ 未設定 ─</option>
+                {% if session['user']['role'] == 'root' %}
+                <!-- root は「新規追加」を選択すると入力欄が表示される -->
+                <option value="__new__"
+                        {% if base_not_in_list %}selected{% endif %}>
+                  ＋ 新規追加
+                </option>
+                {% endif %}
+                {% for b in base_list %}
+                <option value="{{ b }}"
+                        {% if user.base == b %}selected{% endif %}>
+                  {{ b }}
+                </option>
+                {% endfor %}
+              </select>
+              {% if session['user']['role'] == 'root' %}
+              <!-- 「新規追加」選択時のみ表示するテキスト入力欄 -->
+              <input type="text"
+                     class="form-control mt-2"
+                     id="base_new_input"
+                     name="base_new"
+                     value="{{ user.base if base_not_in_list else '' }}"
+                     placeholder="新しい拠点名を入力"
+                     style="display: none;"
+                     {% if is_admin_viewing_root %}disabled{% endif %}>
+              {% endif %}
+            </div>
+            <!-- root かつ拠点が設定済みの場合のみ削除ボタンを表示 -->
+            {% if session['user']['role'] == 'root' and user.base and not is_admin_viewing_root %}
+            <button type="button"
+                    class="btn btn-outline-danger btn-sm mt-1"
+                    id="base_delete_btn"
+                    onclick="clearBase()">
+              <i class="bi bi-x-lg"></i>
+            </button>
+            {% endif %}
+          </div>
+          {% if session['user']['role'] == 'root' %}
+          <div class="form-text">選択または新規登録してください。</div>
+          {% else %}
+          <div class="form-text">選択してください。</div>
+          {% endif %}
         </div>
 
       </div>
@@ -177,7 +220,7 @@
         </button>
         {% endif %}
         <!-- 戻るボタン -->
-        <a href="{{ url_for('accounts.list_get') }}" class="btn btn-outline-secondary">
+        <a href="{{ back_url }}" class="btn btn-outline-secondary">
           <i class="bi bi-arrow-left me-1"></i>戻る
         </a>
       </div>
@@ -185,7 +228,7 @@
       <!-- 削除フォーム：root以外を対象に、adminはrootのみ削除可 -->
       {% if user.role != 'root' and (user.role != 'admin' or session['user']['role'] == 'root') %}
       <form method="POST"
-            action="{{ url_for('accounts.delete_post', user_id=user.id) }}"
+            action="{{ url_for('account_delete_post', id=user.id) }}"
             onsubmit="return confirm('「{{ user.full_name }}」のアカウントを削除しますか？この操作は取り消せません。')">
         <!-- CSRF対策トークン -->
         {{ form.hidden_tag() if form else '' }}
@@ -207,7 +250,7 @@
     </h5>
   </div>
   <div class="card-body p-4">
-    <form method="POST" action="{{ url_for('accounts.password_post', user_id=user.id) }}">
+    <form method="POST" action="{{ url_for('account_password_post', id=user.id) }}">
       {{ form.hidden_tag() if form else '' }}
       <div class="row g-3">
 
@@ -282,7 +325,7 @@
           {% for eq in assigned_equipment_list %}
           <tr>
             <td>
-              <a href="{{ url_for('equipment.detail_get', equipment_id=eq.id) }}"
+              <a href="{{ url_for('equipment_detail_get', id=eq.id) }}"
                  class="text-decoration-none">
                 {{ eq.name }}
               </a>
@@ -321,5 +364,36 @@
     {% endif %}
   </div>
 </div>
+
+<script>
+/* 「新規追加」選択時のみテキスト入力欄を表示する */
+function toggleBaseInput() {
+  var select = document.getElementById('base_select');
+  var input = document.getElementById('base_new_input');
+  if (!input) return;
+  if (select.value === '__new__') {
+    input.style.display = '';
+  } else {
+    input.style.display = 'none';
+    input.value = '';
+  }
+}
+
+/* 拠点を削除する（─ 未設定 ─ にリセットする） */
+function clearBase() {
+  if (!confirm('拠点の設定を削除しますか？\n「保存」ボタンを押すまで確定されません。')) return;
+  var select = document.getElementById('base_select');
+  select.value = '';
+  toggleBaseInput();
+  /* 削除ボタン自体を非表示にする */
+  var btn = document.getElementById('base_delete_btn');
+  if (btn) btn.style.display = 'none';
+}
+
+/* ページ読み込み時に初期状態を設定する */
+document.addEventListener('DOMContentLoaded', function() {
+  toggleBaseInput();
+});
+</script>
 
 {% endblock %}
