@@ -52,3 +52,6 @@ services:
 
 volumes:
   db_data:
+    # Keep using the database volume created before the local project was renamed.
+    name: myapplication_db_data
+    external: true
