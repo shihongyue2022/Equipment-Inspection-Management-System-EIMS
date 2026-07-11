@@ -8,21 +8,34 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      # DBボリュームが初回作成時のみ init.sql を実行する
-      - ./app/database/create_app_db.sql:/docker-entrypoint-initdb.d/init.sql
+      # DBボリュームが初回作成時のみ、アルファベット順で init SQL を実行する
+      - ./app/database/create_app_db.sql:/docker-entrypoint-initdb.d/01_schema_and_data.sql
+      - ./migrations/timeseries_inspection_data.sql:/docker-entrypoint-initdb.d/02_timeseries.sql
+      - ./migrations/rewrite_equipment_regional.sql:/docker-entrypoint-initdb.d/03_rewrite_regional.sql
+      - ./migrations/redistribute_equipment_assignments.sql:/docker-entrypoint-initdb.d/04_redistribute.sql
+      - ./migrations/05_inject_repair_records.sql:/docker-entrypoint-initdb.d/05_inject_repair_records.sql
+      - ./migrations/add_batch_id_to_audit_log.sql:/docker-entrypoint-initdb.d/06_add_batch_id.sql
+      - ./migrations/update_test_data_distribution.sql:/docker-entrypoint-initdb.d/07_update_distribution.sql
+      - ./migrations/08_add_index_ir_eq_id.sql:/docker-entrypoint-initdb.d/08_add_index_ir_eq_id.sql
       # コンテナ削除後もMySQLデータを保持する
       - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
-      interval: 5s
-      timeout: 10s
-      retries: 10
+      # mysqladmin ping（接続確認）AND inspection_records が 200,000件超（初期化完了確認）
+      # → 19MB の timeseries SQL が全件 INSERT し終わるまで healthy にならない
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -prootpass --silent && [ $(mysql -u root -prootpass inspection_db -e 'SELECT COUNT(*) FROM inspection_records;' -N 2>/dev/null || echo 0) -gt 200031 ]"]
+      start_period: 20s   # 起動直後のフライング判定を防ぐ猶予時間
+      interval: 10s       # 10秒ごとにチェック
+      timeout: 15s
+      retries: 42         # 最大 20s + 42×10s = 7分待機（19MB読み込みに十分な余裕）
 
   web:
     build: .
     container_name: inspection_web
     ports:
       - "5000:5000"
+    volumes:
+      # ローカルのコードをコンテナにマウントする（コード変更を即時反映するため）
+      - ./app:/app/app
     environment:
       # Docker内部ではコンテナ名 db、ポート 3306（内部ポート）を使う
       DB_HOST: db
@@ -31,6 +44,7 @@ services:
       DB_PASSWORD: rootpass
       DB_NAME: inspection_db
       SECRET_KEY: change-this-in-production
+      FLASK_APP: run.py
       FLASK_DEBUG: 0
     depends_on:
       db:

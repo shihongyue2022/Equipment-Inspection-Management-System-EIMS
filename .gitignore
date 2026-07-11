@@ -39,3 +39,4 @@ workspace/
 # Local repository migration and recovery artifacts.
 /.legacy-history.bundle
 /.private-recovery/
+/CLAUDE.md
