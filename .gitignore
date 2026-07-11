@@ -17,6 +17,7 @@ instance/
 # 環境変数（機密情報 ← 絶対にGitに含めない）
 .env
 .env.local
+.env_backup
 secrets.py
 # VS Code
 .vscode/settings.json
@@ -34,3 +35,7 @@ workspace/
 
 # Documentation is versioned in the private EIMS-private-docs repository.
 /docs/
+
+# Local repository migration and recovery artifacts.
+/.legacy-history.bundle
+/.private-recovery/
