@@ -229,75 +229,178 @@ Running on urlでアクセスできます。
 
 ## 7. ディレクトリ構成
 
-```
-E_T.ECH/
+Gitで管理されているファイルに基づく構成です。ローカルで作成する `.env`、仮想環境、キャッシュなどは含みません。
+
+```text
+Equipment-Inspection-Management-System-EIMS/
 ├── app/
-│   ├── __init__.py              # Flaskアプリ生成・ルーティング登録
-│   ├── utils.py                 # 共通ユーティリティ（get_deadline_status）
-│   ├── dao/                     # DB操作クラス（SQL はここだけに書く）
+│   ├── accounts/
 │   │   ├── __init__.py
-│   │   ├── dao.py               # 基底DAOクラス（接続・切断）
-│   │   ├── user_dao.py          # UserDao
-│   │   ├── equipment_dao.py     # EquipmentDao
-│   │   └── inspection_dao.py    # InspectionDao
-│   ├── dto/                     # データ転送オブジェクト（@property / @setter）
+│   │   └── routes.py
+│   ├── auth/
 │   │   ├── __init__.py
-│   │   ├── user_dto.py          # UserDto
-│   │   ├── equipment_dto.py     # EquipmentDto
-│   │   └── inspection_dto.py    # InspectionDto
-│   ├── views/                   # ルーティング・ビュー関数
+│   │   └── routes.py
+│   ├── common/
 │   │   ├── __init__.py
-│   │   ├── auth_view.py         # ログイン・ログアウト
-│   │   ├── dashboard_view.py    # ダッシュボード
-│   │   └── account_view.py      # アカウント管理
-│   ├── templates/               # Jinja2テンプレート（HTML）
-│   │   ├── base.html            # 共通レイアウト
-│   │   ├── login.html
-│   │   ├── dashboard.html
-│   │   ├── account/             # アカウント管理画面
-│   │   │   ├── list.html
-│   │   │   ├── new.html
-│   │   │   └── detail.html
-│   │   ├── equipment/           # 設備マスタ画面
-│   │   │   ├── list.html
-│   │   │   ├── new.html
-│   │   │   ├── detail.html
-│   │   │   └── edit.html
-│   │   ├── inspection/          # 点検記録画面
-│   │   │   └── new.html
-│   │   └── errors/              # エラー画面
-│   │       ├── 404.html
-│   │       └── 500.html
-│   ├── models/                  # （将来拡張用）
-│   ├── static/                  # CSS・画像
+│   │   └── auth.py
+│   ├── dao/
+│   │   ├── __init__.py
+│   │   ├── dao.py
+│   │   ├── equipment_dao.py
+│   │   ├── inspection_dao.py
+│   │   └── user_dao.py
+│   ├── dashboard/
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   ├── database/
+│   │   ├── __init__.py
+│   │   ├── config.py
+│   │   └── create_app_db.sql
+│   ├── dto/
+│   │   ├── __init__.py
+│   │   ├── equipment_dto.py
+│   │   ├── inspection_dto.py
+│   │   └── user_dto.py
+│   ├── equipment/
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   ├── inspections/
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   ├── maintenance/
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── accounts.py
+│   │   ├── dashboard.py
+│   │   ├── equipment.py
+│   │   ├── inspection.py
+│   │   └── maintenance.py
+│   ├── static/
+│   │   ├── vendor/
+│   │   │   ├── tabler/
+│   │   │   │   ├── css/
+│   │   │   │   │   └── tabler.min.css
+│   │   │   │   ├── js/
+│   │   │   │   │   └── tabler.min.js
+│   │   │   │   └── LICENSE
+│   │   │   └── tabler-icons/
+│   │   │       ├── fonts/
+│   │   │       │   ├── tabler-icons.ttf
+│   │   │       │   ├── tabler-icons.woff
+│   │   │       │   └── tabler-icons.woff2
+│   │   │       ├── LICENSE
+│   │   │       └── tabler-icons.min.css
+│   │   ├── .gitkeep
+│   │   ├── e_team.png
+│   │   ├── et_ech_white.png
+│   │   ├── logo.png
 │   │   └── style.css
-│   └── database/
-│       ├── config.py            # DB接続設定（環境変数で切り替え）
-│       ├── create_app_db.sql    # DB・テーブル作成・初期データSQL
-│       └── README.md
-├── docs/                        # 設計書・ドキュメント
-│   ├── notebooks/
-│   │   └── flask_login_demo.ipynb
-│   ├── 01_要件定義書.md
-│   ├── 02_基本設計書.md
-│   ├── 03_詳細設計書.md
-│   ├── 04_データベース定義書.md
-│   ├── 05_課題管理表.md
-│   ├── 06_バックログ_Sprint1.md
-│   ├── Gitチーム規約.md
-│   ├── タスクボード.xlsx
-│   ├── 日報.txt
-│   └── 顧客向け要件定義書.html
-├── logs/                        # Claude Codeログ
-│   └── Sprint1/
-├── workspace/                   # 学習用ファイル・資料
-├── Dockerfile                   # Webコンテナのビルド定義
-├── docker-compose.yml           # web（Flask）+ db（MySQL）の2コンテナ構成
-├── wsgi.py                      # Flaskエントリポイント
-├── requirements.txt             # Python依存ライブラリ
-├── .env                         # 環境変数（Gitに含めない）
-└── CLAUDE.md                    # AI利用方針・コーディング規約
+│   ├── templates/
+│   │   ├── account/
+│   │   │   ├── detail.html
+│   │   │   ├── list.html
+│   │   │   ├── my_password.html
+│   │   │   └── new.html
+│   │   ├── equipment/
+│   │   │   ├── detail.html
+│   │   │   ├── edit.html
+│   │   │   ├── list.html
+│   │   │   └── new.html
+│   │   ├── errors/
+│   │   │   ├── 404.html
+│   │   │   └── 500.html
+│   │   ├── inspection/
+│   │   │   └── new.html
+│   │   ├── maintenance/
+│   │   │   └── form.html
+│   │   ├── partials/
+│   │   │   └── group_chart_row.html
+│   │   ├── recycle_bin/
+│   │   │   └── index.html
+│   │   ├── .gitkeep
+│   │   ├── base.html
+│   │   ├── dashboard.html
+│   │   ├── login.html
+│   │   └── session_timeout.html
+│   ├── views/
+│   │   ├── .gitkeep
+│   │   ├── __init__.py
+│   │   ├── account_view.py
+│   │   ├── auth_view.py
+│   │   ├── dashboard_view.py
+│   │   ├── equipment.py
+│   │   ├── error_view.py
+│   │   ├── inspection_view.py
+│   │   ├── notification_view.py
+│   │   └── recycle_bin_view.py
+│   ├── __init__.py
+│   ├── config.py
+│   ├── constants.py
+│   ├── extensions.py
+│   ├── forms.py
+│   ├── models.py
+│   └── utils.py
+├── migrations/
+│   ├── versions/
+│   │   ├── b28638c85152_initial_schema.py
+│   │   ├── d9a71c3e5b42_add_dashboard_grouping_indexes.py
+│   │   └── f2c84d6a190e_add_maintenance_lifecycle.py
+│   ├── 05_inject_repair_records.sql
+│   ├── 08_add_index_ir_eq_id.sql
+│   ├── README
+│   ├── add_batch_id_to_audit_log.sql
+│   ├── add_expected_inspection_date.sql
+│   ├── add_soft_delete_and_audit_log.sql
+│   ├── alembic.ini
+│   ├── env.py
+│   ├── generate_regional_update.py
+│   ├── generate_timeseries_data.py
+│   ├── inject_repair_records.py
+│   ├── redistribute_equipment_assignments.sql
+│   ├── rewrite_equipment_regional.sql
+│   ├── script.py.mako
+│   ├── timeseries_inspection_data.sql
+│   └── update_test_data_distribution.sql
+├── tests/
+│   ├── conftest.py
+│   ├── test_account_view.py
+│   ├── test_accounts.py
+│   ├── test_auth.py
+│   ├── test_auth_view.py
+│   ├── test_dashboard.py
+│   ├── test_dashboard_view.py
+│   ├── test_employee_dto.py
+│   ├── test_equipment.py
+│   ├── test_equipment_detail_view.py
+│   ├── test_equipment_dto.py
+│   ├── test_equipment_edit_view.py
+│   ├── test_equipment_list_sprint3.py
+│   ├── test_equipment_list_view.py
+│   ├── test_equipment_new_view.py
+│   ├── test_inspection.py
+│   ├── test_inspection_dto.py
+│   ├── test_inspection_view.py
+│   ├── test_maintenance.py
+│   ├── test_password_change_view.py
+│   ├── test_recycle_bin_view.py
+│   ├── test_ui_assets.py
+│   └── test_utils.py
+├── .dockerignore
+├── .env.example
+├── .gitignore
+├── Dockerfile
+├── README.md
+├── THIRD_PARTY_NOTICES.md
+├── docker-compose.cloud-db.yml
+├── docker-compose.yml
+├── pytest.ini
+├── requirements.txt
+├── run.py
+└── setup_db.ps1
 ```
+
 
 ---
 
