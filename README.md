@@ -229,7 +229,7 @@ Running on urlでアクセスできます。
 
 ## 7. ディレクトリ構成
 
-Gitで管理されているファイルに基づく構成です。ローカルで作成する `.env`、仮想環境、キャッシュなどは含みません。
+Gitで管理されているファイルに基づく主な構成です。migrations/ と tests/ の内容は省略しています。ローカルで作成する `.env`、仮想環境、キャッシュなどは含みません。
 
 ```text
 Equipment-Inspection-Management-System-EIMS/
@@ -342,51 +342,8 @@ Equipment-Inspection-Management-System-EIMS/
 │   ├── forms.py
 │   ├── models.py
 │   └── utils.py
-├── migrations/
-│   ├── versions/
-│   │   ├── b28638c85152_initial_schema.py
-│   │   ├── d9a71c3e5b42_add_dashboard_grouping_indexes.py
-│   │   └── f2c84d6a190e_add_maintenance_lifecycle.py
-│   ├── 05_inject_repair_records.sql
-│   ├── 08_add_index_ir_eq_id.sql
-│   ├── README
-│   ├── add_batch_id_to_audit_log.sql
-│   ├── add_expected_inspection_date.sql
-│   ├── add_soft_delete_and_audit_log.sql
-│   ├── alembic.ini
-│   ├── env.py
-│   ├── generate_regional_update.py
-│   ├── generate_timeseries_data.py
-│   ├── inject_repair_records.py
-│   ├── redistribute_equipment_assignments.sql
-│   ├── rewrite_equipment_regional.sql
-│   ├── script.py.mako
-│   ├── timeseries_inspection_data.sql
-│   └── update_test_data_distribution.sql
-├── tests/
-│   ├── conftest.py
-│   ├── test_account_view.py
-│   ├── test_accounts.py
-│   ├── test_auth.py
-│   ├── test_auth_view.py
-│   ├── test_dashboard.py
-│   ├── test_dashboard_view.py
-│   ├── test_employee_dto.py
-│   ├── test_equipment.py
-│   ├── test_equipment_detail_view.py
-│   ├── test_equipment_dto.py
-│   ├── test_equipment_edit_view.py
-│   ├── test_equipment_list_sprint3.py
-│   ├── test_equipment_list_view.py
-│   ├── test_equipment_new_view.py
-│   ├── test_inspection.py
-│   ├── test_inspection_dto.py
-│   ├── test_inspection_view.py
-│   ├── test_maintenance.py
-│   ├── test_password_change_view.py
-│   ├── test_recycle_bin_view.py
-│   ├── test_ui_assets.py
-│   └── test_utils.py
+├── migrations/                  # DBマイグレーション（詳細省略）
+├── tests/                       # 自動テスト（詳細省略）
 ├── .dockerignore
 ├── .env.example
 ├── .gitignore
